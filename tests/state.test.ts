@@ -127,6 +127,21 @@ describe('the header line', () => {
     expect(await ui.find({ text: /feat\/x ↑2 · 2 changed · #12 open ✓ · \d+s/ })).toBeDefined()
   })
 
+  test('keeps the state label whole in a narrow pane and cuts the position instead', async ($, on) => {
+    world(on, { status: '## a-very-long-branch-name-for-a-narrow-pane...origin/a-very-long-branch-name-for-a-narrow-pane\n' })
+    await $.prompt.submit({ text: 'go', wait: false, origin: { kind: 'composer' } })
+    const ui = await $.ui.mount({ ...PANE, surface: 'terminal', props: { ...PANE.props, bodyColumns: 40 } })
+    await $.command.run({
+      command: 'session-monitor',
+      args: 'state',
+      origin: { kind: 'composer' },
+      presentation: { isFullscreen: false, columns: 40 },
+    })
+    await ui.press({ key: 'state-refresh' })
+
+    expect(await ui.find({ text: /^Working · \d+s$/ })).toBeDefined()
+  })
+
   test('says when the last turn was interrupted', async ($, on) => {
     world(on, {})
     await turn($, 'Half', { isAborted: true })

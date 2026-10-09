@@ -79,7 +79,7 @@ const describeTool = (tool: string, input: Record<string, unknown>) => {
     (v): v is string => typeof v === 'string',
   )
 
-  return subject ? `${tool}: ${subject.split('\n')[0]?.slice(0, 60)}` : tool
+  return subject ? `${tool}: ${subject.split('\n')[0]?.slice(0, 40)}` : tool
 }
 
 const KIND_WIDTH = 14 // 'deleted branch'
@@ -152,15 +152,19 @@ async function drawState($: $, e: RenderInput<'Pane'>) {
   return (
     <Box flexDirection="column">
       <Box>
-        <Text bold color={label.color} wrap="truncate-end">
-          {label.text}
-        </Text>
-        <Box flexGrow={1} />
         <Box flexShrink={0}>
-          <Text dimColor>
+          <Text bold color={label.color}>
+            {label.text}
+          </Text>
+        </Box>
+        <Box flexGrow={1} flexShrink={1} minWidth={0} justifyContent="flex-end">
+          <Text dimColor wrap="truncate-start">
+            {'  '}
             {positionLine(pos)}
             {pos ? ` · ${ago(pos.readAt, at)}` : ''}{' '}
           </Text>
+        </Box>
+        <Box flexShrink={0}>
           <Button key="state-refresh" plain label="↻" onPress={() => refresh($)} />
         </Box>
       </Box>
