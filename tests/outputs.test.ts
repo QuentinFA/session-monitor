@@ -35,7 +35,14 @@ type BashOutcome = {
 const EMPTY: Outputs = { places: [], github: [], services: [], scheduled: [] }
 
 /** Stands for the engine beneath the mod; answers what the mod last recorded. */
-function host(on: On, repos: Repo[], bash: (command: string) => BashOutcome = () => ({}), cwd = '/work/app') {
+function host(
+  on: On,
+  repos: Repo[],
+  bash: (command: string) => BashOutcome = () => ({}),
+  cwd = '/work/app',
+  /** Directories that exist but where git cannot be run at all. */
+  unrunnable: string[] = [],
+) {
   let outputs = EMPTY
   on('state.set', { plugin: 'session-monitor', key: 'outputs' }, (_$, e, next) => {
     outputs = e.value as Outputs
@@ -53,7 +60,10 @@ function host(on: On, repos: Repo[], bash: (command: string) => BashOutcome = ()
       realPath: e.path.replace(/^\/tmp(?=\/|$)/, '/private/tmp'),
     },
   }))
-  on('process.run', (_$, e) => ({ value: git(e.argv, e.init?.cwd ?? cwd) }))
+  on('process.run', (_$, e) =>
+    unrunnable.includes(e.init?.cwd ?? cwd) ? { deny: 'cannot run here' } : { value: git(e.argv, e.init?.cwd ?? cwd) },
+  )
+  on('fs.exists', () => ({ value: true }))
   on('tool.call', { tool: 'Bash' }, (_$, e) => {
     const outcome = bash(e.command)
     if (outcome.deny !== undefined) {
@@ -190,6 +200,97 @@ describe('changes', () => {
     await $.tool.call({ tool: 'Bash', command: 'git checkout main' })
 
     expect(recorded().places[0]?.changed).toEqual([])
+  })
+})
+
+describe('what the first pass missed', () => {
+  test('counts a file the engine listed without lines from git, and marks one outside a repo uncounted', async ($, on) => {
+    const repo: Repo = { root: '/work/app', head: 'a1', numstat: '' }
+    const recorded = host(on, [repo], () => ({
+      bashEditDiff: { files: [], moreFiles: 2, changedFiles: ['/work/app/docs/b.md', '/tmp/out/c.txt'] },
+      effect: () => {
+        repo.numstat = '7\t2\tdocs/b.md\n'
+      },
+    }))
+    await $.tool.call({ tool: 'Bash', command: 'python3 gen.py' })
+
+    const out = recorded()
+    expect(out.places.find(p => p.root === '/work/app')?.changed).toEqual([{ path: 'docs/b.md', added: 7, removed: 2 }])
+    expect(out.places.find(p => p.root === '/private/tmp/out')?.changed).toEqual([
+      { path: 'c.txt', added: 0, removed: 0, isUncounted: true },
+    ])
+  })
+
+  test('records a call refused because no one granted its permission', async ($, on) => {
+    const recorded = host(on, [])
+    on('tool.call', { tool: 'Read' }, () => ({
+      result: undefined as never,
+      isError: true as const,
+      text: "Claude requested permissions to read from /work/app/x, but you haven't granted it yet.",
+    }))
+    await $.tool.call({ tool: 'Read', file_path: '/work/app/x' })
+
+    expect(recorded().blocked).toMatchObject([{ tool: 'Read', reason: 'permission not granted' }])
+  })
+
+  test('calls a directory where git cannot run "repo unknown", not "not git"', async ($, on) => {
+    const recorded = host(on, [], () => ({}), '/work/app', ['/work/locked'])
+    await $.tool.call({ tool: 'Bash', command: 'cd /work/locked && ls' })
+
+    expect(recorded().places).toMatchObject([{ root: '/work/locked', isRepo: false, isRepoUnknown: true }])
+  })
+
+  test('shortens paths with ~ from the start, before anything is recorded', async ($, on) => {
+    host(on, [{ root: '/home/me/app', head: 'a1' }], () => ({}), '/home/me/app')
+    let copied = ''
+    on('ui.copy', (_$, e) => {
+      copied = e.text
+
+      return { value: { isCopied: true as const } }
+    })
+    on('command.register', (_$, e) => ({ value: { command: e.name } }))
+    on('session.start', () => ({ cwd: '/home/me/app' }))
+    await $.session.start({ cwd: '/home/me/app', surface: 'terminal', isInteractive: true })
+    await $.tool.call({ tool: 'Bash', command: 'git status' })
+    const ui = await $.ui.mount({
+      plugin: 'session-monitor',
+      surface: 'terminal',
+      component: 'Pane',
+      requestId: 'session-monitor',
+      props: {
+        title: 'Session monitor',
+        isFocused: true,
+        bodyColumns: 80,
+        placement: 'dock',
+        scroll: { offset: 0, bodyRows: 40 },
+        view: {},
+      },
+    })
+    await ui.press({ key: 'copy' })
+
+    expect(copied).toContain('## ~/app')
+  })
+
+  test("puts the blocked count first in a directory's collapsed line", async ($, on) => {
+    host(on, [{ root: '/work/app', head: 'a1' }], command => (command.startsWith('rm') ? { deny: 'no' } : {}))
+    await $.tool.call({ tool: 'Bash', command: 'git status' })
+    await $.tool.call({ tool: 'Bash', command: 'rm -rf build' })
+    const ui = await $.ui.mount({
+      plugin: 'session-monitor',
+      surface: 'terminal',
+      component: 'Pane',
+      requestId: 'session-monitor',
+      props: {
+        title: 'Session monitor',
+        isFocused: true,
+        bodyColumns: 80,
+        placement: 'dock',
+        scroll: { offset: 0, bodyRows: 40 },
+        view: {},
+      },
+    })
+
+    expect(await ui.find({ text: /^\s*1 blocked · 2 commands$/ })).toBeDefined()
   })
 })
 

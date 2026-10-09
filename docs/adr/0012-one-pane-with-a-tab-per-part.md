@@ -1,6 +1,6 @@
 # 0012. One pane with a tab per part
 
-- Status: accepted, amended by 0014
+- Status: accepted, amended by 0014, 0017
 - Amends: 0010, § "Decision"
 - Date: 2026-10-09
 
@@ -19,6 +19,8 @@ chain for the body; each part's render hook answers on its own tab and passes on
 `/outputs` stays, as a shortcut to its tab. A tab appears once its part exists.
 
 ## Consequences
+
+> **Amended by [ADR 0017](0017-what-every-part-reads-is-set-at-session-start.md):** what a part needs before it records is read at session start and kept in state, not lazily.
 
 The plugin's one unmatched `session.start` is in `hooks/register.tsx`, which declares every part's
 commands; a part does its own start-up lazily, on first use.

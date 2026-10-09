@@ -1,6 +1,6 @@
 # 0003. Line counts come from the session's own edits
 
-- Status: accepted
+- Status: accepted, amended by 0016
 - Date: 2026-10-08
 
 ## Context
@@ -11,6 +11,8 @@ formatter, a redirect — reaches the engine as a Bash call, and its per-file di
 attached: in testing, a `sed` edit in a second repository arrived with none.
 
 ## Decision
+
+> **Amended by [ADR 0016](0016-what-the-record-cannot-know-it-says.md):** a file the engine lists without counts is counted from git, or shown uncounted (`±?`).
 
 Count from what each tool call reports: Edit and Write patches, the engine's per-file diff on Bash
 results, and each commit's own `numstat`. When a Bash command carries no diff — the engine does not

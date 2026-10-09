@@ -86,7 +86,7 @@ The Status column mirrors each ADR's Status line.
 | --- | --- | --- |
 | [0001](0001-a-mod-not-a-status-line-or-a-skill.md) | The session's outputs are recorded by a mod, not a status line or a skill | accepted |
 | [0002](0002-outputs-are-grouped-by-directory.md) | Outputs are grouped by directory, and what was used is kept with what was produced | accepted |
-| [0003](0003-line-counts-come-from-the-sessions-own-edits.md) | Line counts come from the session's own edits | accepted |
+| [0003](0003-line-counts-come-from-the-sessions-own-edits.md) | Line counts come from the session's own edits | accepted, amended by 0016 |
 | [0004](0004-command-text-backs-up-the-engines-reports.md) | Command text and git back up the engine's git and GitHub reports | accepted |
 | [0005](0005-a-commands-directory-is-read-from-its-cd-chain.md) | A command's directory is read from its cd chain, heredoc bodies excluded | accepted |
 | [0006](0006-branch-switches-are-not-edits.md) | Branch switches are not edits | accepted |
@@ -95,10 +95,12 @@ The Status column mirrors each ADR's Status line.
 | [0009](0009-recording-never-affects-the-tool-call.md) | Recording never affects the tool call | accepted |
 | [0010](0010-one-plugin-with-parts-in-its-own-repository.md) | One plugin with parts, in its own repository | accepted, amended by 0012 |
 | [0011](0011-installed-through-claude-code-plugin-dirs.md) | The plugin is installed through CLAUDE_CODE_PLUGIN_DIRS | accepted |
-| [0012](0012-one-pane-with-a-tab-per-part.md) | One pane with a tab per part | accepted, amended by 0014 |
+| [0012](0012-one-pane-with-a-tab-per-part.md) | One pane with a tab per part | accepted, amended by 0014, 0017 |
 | [0013](0013-blocked-calls-are-shown-first-in-red.md) | Blocked calls are shown first, in red | accepted, amended by 0015 |
 | [0014](0014-outputs-has-no-command-reset-is-a-button.md) | Outputs has no command of its own; Reset is a button | accepted |
 | [0015](0015-blocked-folds-like-every-section.md) | Blocked folds like every other section | accepted |
+| [0016](0016-what-the-record-cannot-know-it-says.md) | What the record cannot know, it says it cannot know | accepted |
+| [0017](0017-what-every-part-reads-is-set-at-session-start.md) | What every part reads is set when the session starts | accepted |
 
 ## Why it works this way
 

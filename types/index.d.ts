@@ -1,6 +1,11 @@
 export type LineCount = { path: string; added: number; removed: number }
 
-export type FileChange = LineCount & { isCreated?: boolean; isDeleted?: boolean }
+export type FileChange = LineCount & {
+  isCreated?: boolean
+  isDeleted?: boolean
+  /** Changed, but neither the engine nor git said by how many lines. */
+  isUncounted?: boolean
+}
 
 export type FileUse = {
   path: string
@@ -31,6 +36,8 @@ export type Commit = {
 export type Place = {
   root: string
   isRepo: boolean
+  /** Git could not be run there, so whether it is a repository is unknown. */
+  isRepoUnknown?: boolean
   remote?: string
   commands: Command[]
   used: FileUse[]
@@ -72,6 +79,8 @@ declare module 'claude-code' {
     'session-monitor': {
       /** The monitor's tab on show. */
       tab: string
+      /** The home directory, read when the session starts: `~` in shown paths. */
+      home: string
       outputs: Outputs
       expanded: string[]
       /** The Outputs tab's Reset was pressed once and awaits its confirmation. */

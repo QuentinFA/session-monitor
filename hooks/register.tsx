@@ -9,6 +9,7 @@ import { registerOutputs } from '../src/outputs'
 type $ = EngineInterface
 
 const activeTab = atom({ plugin: 'session-monitor', key: 'tab' } as const, 'outputs')
+const homeDir = atom({ plugin: 'session-monitor', key: 'home' } as const, '')
 
 const LABELS: Record<TabId, string> = { outputs: 'Outputs' }
 
@@ -40,8 +41,13 @@ async function drawMonitor($: $, e: RenderInput<'Pane'>, body: Promise<unknown>)
 }
 
 export const register: Register = (on, options) => {
-  // The plugin's one session.start: every part's commands are declared here.
+  // The plugin's one session.start: every part's commands are declared here, and what parts read
+  // before anything is recorded — the home directory — is put in state. It fires again on a reload.
   on('session.start', async ($, e, next) => {
+    const got = await $.process.run(['printenv', 'HOME']).catch(() => undefined)
+    if (got?.exitCode === 0 && got.stdout.trim()) {
+      await update($, homeDir, () => got.stdout.trim())
+    }
     await $.command.register({
       name: 'session-monitor',
       description: `Open the session monitor, optionally on a tab: ${TAB_IDS.join(', ')}`,

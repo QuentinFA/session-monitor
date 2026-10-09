@@ -34,10 +34,13 @@ const MCP_READ = /^(get|list|search|read|query|fetch|download|find|guide|describ
 const MAX_COMMANDS = 300
 // How core words a call the person declined at the permission prompt: an error result, not a deny.
 const DECLINED = /doesn't want to proceed|tool use was rejected|user (?:rejected|declined|denied)/i
+// How core words a call that needed a permission nobody granted (a headless session has no one to ask).
+const NOT_GRANTED = /requested permissions? to .+ but you haven't granted it/i
 
 type $ = EngineInterface
 
 const activeTab = atom({ plugin: 'session-monitor', key: 'tab' } as const, 'outputs')
+const homeDir = atom({ plugin: 'session-monitor', key: 'home' } as const, '')
 
 // Module state: caches only, rebuilt after a reload.
 const roots = new Map<string, { root: string; isRepo: boolean }>()
@@ -49,7 +52,7 @@ const resolve = (base: string, path: string) =>
 const short = (path: string) => (home && path.startsWith(home) ? `~${path.slice(home.length)}` : path)
 
 /** The git root holding `dir`, or `dir` itself outside any repo. */
-const placeOf = async ($: $, dir: string) => {
+const placeOf = async ($: $, dir: string): Promise<{ root: string; isRepo: boolean; isRepoUnknown?: boolean }> => {
   const known = roots.get(dir)
   if (known) {
     return known
@@ -61,19 +64,22 @@ const placeOf = async ($: $, dir: string) => {
       .catch(() => undefined)
     if (found?.exitCode === 0) {
       const place = { root: found.stdout.trim(), isRepo: true }
-      roots.set(dir, place)
+      roots.set(dir, place) // only a repository is cached: a "no" may be a passing failure
 
       return place
     }
-    if (found !== undefined || probe === '/') {
-      break
+    if (found !== undefined) {
+      return { root: dir, isRepo: false } // git answered: not a repository
     }
-    probe = dirname(probe) // the directory may not exist (a deleted file's)
+    // Git could not run here. A missing directory (a deleted file's) is probed through its parent;
+    // an existing one is left unknown rather than called "not git".
+    if (probe === '/' || (await $.fs.exists(probe).catch(() => false))) {
+      return { root: dir, isRepo: false, isRepoUnknown: true }
+    }
+    probe = dirname(probe)
   }
-  const place = { root: dir, isRepo: false }
-  roots.set(dir, place)
 
-  return place
+  return { root: dir, isRepo: false, isRepoUnknown: true }
 }
 
 /**
@@ -110,8 +116,7 @@ const shellText = (command: string) =>
 /** The home directory, read once: `~` in a `cd` and in shown paths. */
 const loadHome = async ($: $) => {
   if (!home) {
-    const got = await $.process.run(['printenv', 'HOME']).catch(() => undefined)
-    home = got?.stdout.trim() ?? ''
+    home = await read($, homeDir)
   }
 }
 
@@ -177,7 +182,7 @@ const snapshot = async ($: $, dir: string): Promise<Snapshot | undefined> => {
 /** Applies `fn` to the place for `dir`, creating the place on first touch. */
 const touch = async ($: $, dir: string, fn: (place: Place) => Place) => {
   await loadHome($)
-  const { root, isRepo } = await placeOf($, await canon($, dir))
+  const { root, isRepo, isRepoUnknown } = await placeOf($, await canon($, dir))
   const isNew = !(await read($, outputs)).places.some(p => p.root === root)
   const remote = isNew && isRepo ? await remoteOf($, root) : undefined
   await update($, outputs, out => {
@@ -185,6 +190,7 @@ const touch = async ($: $, dir: string, fn: (place: Place) => Place) => {
     const place: Place = has ?? {
       root,
       isRepo,
+      isRepoUnknown,
       remote,
       commands: [],
       used: [],
@@ -216,6 +222,7 @@ const addChange = (place: Place, change: FileChange): Place => {
         removed: had.removed + change.removed,
         isCreated: had.isCreated || change.isCreated ? true : undefined,
         isDeleted: change.isDeleted ? true : undefined,
+        isUncounted: had.isUncounted && change.isUncounted ? true : undefined,
       }
     : { ...change, path }
 
@@ -301,8 +308,13 @@ const isProductive = (place: Place) =>
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
 
 /** A directory's collapsed line. */
+const blockedIn = (place: Place) =>
+  place.commands.filter(c => c.isBlocked).length + place.used.filter(f => f.blocked).length
+
+/** A directory's collapsed line; what was blocked first, so a narrow pane cuts something else. */
 const counts = (place: Place) =>
   [
+    blockedIn(place) > 0 && `${blockedIn(place)} blocked`,
     place.branches.length && plural(place.branches.length, 'branch', 'branches'),
     place.deleted?.length && `${place.deleted.length} deleted`,
     place.remoteDeleted?.length && `${place.remoteDeleted.length} deleted on remote`,
@@ -310,7 +322,6 @@ const counts = (place: Place) =>
     place.changed.length && `${place.changed.length} changed`,
     place.used.length && `${place.used.length} read`,
     place.commands.length && plural(place.commands.length, 'command'),
-    place.commands.some(c => c.isBlocked) && `${place.commands.filter(c => c.isBlocked).length} blocked`,
   ]
     .filter(Boolean)
     .join(' · ')
@@ -350,7 +361,8 @@ function report(out: Outputs) {
     }
   }
   for (const place of out.places) {
-    parts.push(`\n## ${short(place.root)}${place.remote ? ` (${place.remote})` : place.isRepo ? '' : ' (not git)'}`)
+    const kind = place.isRepo ? '' : place.isRepoUnknown ? ' (repo unknown)' : ' (not git)'
+    parts.push(`\n## ${short(place.root)}${place.remote ? ` (${place.remote})` : kind}`)
     if (place.branches.length)
       parts.push(`- branches: ${place.branches.map(b => (place.deleted?.includes(b) ? `~~${b}~~ (deleted)` : b)).join(', ')}`)
     const deletedOnly = (place.deleted ?? []).filter(b => !place.branches.includes(b))
@@ -367,7 +379,7 @@ function report(out: Outputs) {
     if (place.changed.length) {
       parts.push('\n### Changed')
       for (const f of place.changed)
-        parts.push(`- +${f.added} −${f.removed} ${f.path}${f.isCreated ? ' (new)' : ''}${f.isDeleted ? ' (deleted)' : ''}`)
+        parts.push(`- ${f.isUncounted ? '±?' : `+${f.added} −${f.removed}`} ${f.path}${f.isCreated ? ' (new)' : ''}${f.isDeleted ? ' (deleted)' : ''}`)
     }
     if (place.used.length) {
       parts.push('\n### Read')
@@ -425,7 +437,40 @@ const refusal = (ran: ToolCallResult) =>
     ? ran.deny
     : ran.isError && DECLINED.test(ran.text ?? '')
       ? 'declined at the permission prompt'
-      : undefined
+      : ran.isError && NOT_GRANTED.test(ran.text ?? '')
+        ? 'permission not granted'
+        : undefined
+
+/**
+ * A file the engine listed as changed without counting its lines: counted from git's view before and
+ * after the command when it is in the command's repository, else marked uncounted.
+ */
+const countFromGit = async (
+  $: $,
+  path: string,
+  before: Snapshot | undefined,
+  after: Snapshot | undefined,
+): Promise<FileChange> => {
+  if (!before || !after || !path.startsWith(`${before.root}/`)) {
+    return { path, added: 0, removed: 0, isUncounted: true }
+  }
+  const rel = path.slice(before.root.length + 1)
+  const now = after.numstat.get(rel)
+  if (now) {
+    const was = before.numstat.get(rel) ?? { added: 0, removed: 0 }
+
+    return { path, added: Math.max(0, now.added - was.added), removed: Math.max(0, now.removed - was.removed) }
+  }
+  if (after.untracked.has(rel) && !before.untracked.has(rel)) {
+    const counted = await $.process
+      .run(['git', 'diff', '--no-index', '--numstat', '/dev/null', rel], { cwd: before.root, timeoutMs: 5000 })
+      .catch(() => undefined)
+
+    return { path, added: Number(counted?.stdout.split('\t')[0]) || 0, removed: 0, isCreated: true }
+  }
+
+  return { path, added: 0, removed: 0, isUncounted: true }
+}
 
 async function recordBash(
   $: $,
@@ -479,7 +524,8 @@ async function recordBash(
       for (const raw of diff.changedFiles ?? []) {
         if (!counted.has(raw)) {
           const path = await canon($, raw)
-          await touch($, dirname(path), place => addChange(place, { path, added: 0, removed: 0 }))
+          const change = await countFromGit($, path, before, after)
+          await touch($, dirname(path), place => addChange(place, change))
         }
       }
     }
@@ -809,6 +855,7 @@ async function resetOutputs($: $) {
 
 /** The Outputs tab's body, drawn inside the monitor's pane. */
 async function drawOutputs($: $, e: RenderInput<'Pane'>) {
+  await loadHome($)
   const { Box, Text, Button } = $.ui.resolve(e)
   const out = await read($, outputs)
   const open = await read($, expanded)
@@ -913,7 +960,7 @@ async function drawOutputs($: $, e: RenderInput<'Pane'>) {
               <Text bold={!isQuiet} dimColor={isQuiet} wrap="truncate-start"> {short(place.root)}</Text>
               <Box flexShrink={0}>
                 {place.remote && <Text dimColor> {place.remote}</Text>}
-                {!place.isRepo && <Text dimColor> (not git)</Text>}
+                {!place.isRepo && <Text dimColor>{place.isRepoUnknown ? ' (repo unknown)' : ' (not git)'}</Text>}
                 {place.changed.length > 0 && <Text>  {lines(total)}</Text>}
               </Box>
             </Box>
@@ -983,7 +1030,7 @@ async function drawOutputs($: $, e: RenderInput<'Pane'>) {
                 ))}
                 {place.changed.map(f => (
                   <Text key={`w:${k}:${f.path}`} wrap="truncate-start">
-                    {lines(f)} {f.path}
+                    {f.isUncounted ? <Text dimColor>±?</Text> : lines(f)} {f.path}
                     {f.isCreated && <Text dimColor> new</Text>}
                     {f.isDeleted && <Text dimColor> deleted</Text>}
                   </Text>
