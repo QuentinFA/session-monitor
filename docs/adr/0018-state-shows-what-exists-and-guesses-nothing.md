@@ -1,6 +1,6 @@
 # 0018. State shows what already exists, and guesses nothing
 
-- Status: accepted
+- Status: accepted, amended by 0019
 - Date: 2026-10-09
 
 ## Context
@@ -15,6 +15,8 @@ just removed its own task-tracking tools from current models because they track 
 unaided. The monitor's job is to make the session visible, not to change how the model works.
 
 ## Decision
+
+> **Amended by [ADR 0019](0019-state-is-laid-out-for-re-entry.md):** the sections are reordered for re-entry, turn summaries replaced by the activity trail and the request in the person's words.
 
 State reads only what the engine, git and GitHub already hold, and gives the model no tool:
 

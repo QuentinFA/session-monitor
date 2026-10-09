@@ -44,16 +44,27 @@ as markdown. **Reset** clears it, after a confirmation.
 
 ## state
 
-`/session-monitor state` opens it. Everything on it is read, never asked of the model:
+`/session-monitor state` opens it. It is laid out for coming back to a session — nothing on it is
+asked of the model:
 
-- **Position** — the working directory's branch, upstream and ahead/behind, the tree's staged,
-  modified and untracked counts, and the branch's pull request: state, review, mergeability, checks
-- **Now** — Claude working, for how long and on which tool, or waiting on you
-- **Needs you** — a question Claude is asking, a last answer ending on a question, failing checks,
-  requested changes, merge conflicts, blocked calls
-- **Recently done** — the last turns, each by the first line of Claude's answer
+```
+Waiting on you · 3m                     main · clean · no PR · 12s ↻
 
-It refreshes when a turn ends, after `git` and `gh` commands, every minute, and on **Refresh**.
+Needs you
+  • Claude asked: Should I keep the old command as an alias?
+  • 2 blocked calls → Outputs
+
+You asked "Run some tests to see how it behaves" — answered
+
+Last activity
+  edited    src/state.tsx                                    5m
+  ran       claude plugin test .                             4m
+  committed 77f1ce1 state (feat): add the State tab          3m
+```
+
+Needs you appears only when something needs you; Running, when a background command is still going.
+It refreshes when a turn ends, after `git` and `gh` commands, every minute, and on ↻. The reasoning
+and the research behind it are in [ADR 0019](docs/adr/0019-state-is-laid-out-for-re-entry.md).
 
 ## Install
 

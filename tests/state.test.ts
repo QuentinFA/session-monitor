@@ -21,7 +21,11 @@ function world(on: On, w: World) {
   on('process.run', (_$, e) => {
     const [command, ...args] = e.argv
     if (command === 'git') {
-      return w.isRepo === false ? run(128, '', 'fatal: not a git repository') : run(0, w.status ?? '## main...origin/main\n')
+      if (w.isRepo === false) return run(128, '', 'fatal: not a git repository')
+      if (args.join(' ') === 'rev-parse --show-toplevel') return run(0, '/work/app\n')
+      if (args[0] === 'status') return run(0, w.status ?? '## main...origin/main\n')
+
+      return run(0, '')
     }
     if (command === 'gh' && args[0] === 'pr') {
       return w.pr?.json ? run(0, w.pr.json) : run(1, '', w.pr?.stderr ?? 'no pull requests found for branch "main"')
@@ -34,6 +38,19 @@ function world(on: On, w: World) {
   on('turn.complete', (_$, e) => ({ text: e.answer }))
   on('command.run', () => ({ text: '' }))
   on('ui.open', () => ({ value: { isPlaced: true as const } }))
+  on('fs.stat', (_$, e) => ({ value: { kind: 'dir' as const, size: 0, mtimeMs: 0, isLink: false, realPath: e.path } }))
+  on('tool.call', { tool: 'Bash' }, () => ({ result: { stdout: '', stderr: '', interrupted: false } }))
+  on('tool.call', { tool: 'Edit' }, (_$, e) => ({
+    result: {
+      filePath: e.file_path,
+      oldString: e.old_string,
+      newString: e.new_string,
+      originalFile: '',
+      structuredPatch: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-a', '+b'] }],
+      userModified: false,
+      replaceAll: false,
+    },
+  }))
 
   return mock.clock(on, { now: Date.UTC(2026, 9, 9, 10, 0) })
 }
@@ -63,8 +80,8 @@ const openState = async ($: Engine, surface: 'terminal' | 'desktop' = 'terminal'
   return $.ui.mount({ ...PANE, surface })
 }
 
-const turn = async ($: Engine, answer: string, extra: { isAborted?: boolean } = {}) => {
-  await $.prompt.submit({ text: 'go', wait: false, origin: { kind: 'composer' } })
+const turn = async ($: Engine, answer: string, extra: { isAborted?: boolean; prompt?: string } = {}) => {
+  await $.prompt.submit({ text: extra.prompt ?? 'go', wait: false, origin: { kind: 'composer' } })
   await $.turn.complete({
     answer,
     durationMs: 90_000,
@@ -73,6 +90,16 @@ const turn = async ($: Engine, answer: string, extra: { isAborted?: boolean } = 
     reason: extra.isAborted ? 'aborted' : 'answer',
   })
 }
+
+const PR_PASSING = JSON.stringify({
+  number: 12,
+  url: 'https://github.com/o/app/pull/12',
+  state: 'OPEN',
+  isDraft: false,
+  mergeable: 'MERGEABLE',
+  reviewDecision: '',
+  statusCheckRollup: [{ name: 'test', status: 'COMPLETED', conclusion: 'SUCCESS' }],
+})
 
 const PR_FAILING = JSON.stringify({
   number: 12,
@@ -89,68 +116,61 @@ const PR_FAILING = JSON.stringify({
   ],
 })
 
-describe('position', () => {
-  test('reads the branch, its upstream, the tree and the PR, and lists what needs the person', async ($, on) => {
-    world(on, {
-      status: '## feat/x...origin/feat/x [ahead 2, behind 1]\nM  a.ts\n M b.ts\nMM c.ts\n?? d.ts\n',
-      pr: { json: PR_FAILING },
-    })
+describe('the header line', () => {
+  test('puts the state first and the position in one quiet line', async ($, on) => {
+    world(on, { status: '## feat/x...origin/feat/x [ahead 2]\nM  a.ts\n?? b.ts\n', pr: { json: PR_PASSING } })
+    await turn($, 'Done.')
     const ui = await openState($)
     await ui.press({ key: 'state-refresh' })
 
-    expect(await ui.find({ text: /feat\/x → origin\/feat\/x ↑2 ↓1/ })).toBeDefined()
-    expect(await ui.find({ text: '2 staged · 2 modified · 1 untracked' })).toBeDefined()
-    expect(await ui.find({ text: /#12 open · changes requested · checks: 2 failing, 1 pending, 1 passing/ })).toBeDefined()
-    expect(await ui.find({ text: /2 checks failing on #12: test, ci\/legacy/ })).toBeDefined()
-    expect(await ui.find({ text: /Changes requested on #12/ })).toBeDefined()
-    expect(await ui.find({ text: /#12 has merge conflicts/ })).toBeDefined()
+    expect(await ui.find({ text: /^Waiting on you · \d+s$/ })).toBeDefined()
+    expect(await ui.find({ text: /feat\/x ↑2 · 2 changed · #12 open ✓ · \d+s/ })).toBeDefined()
   })
 
-  test('says there is no PR, or that it could not be read, and never confuses the two', async ($, on) => {
-    const w: World = {}
-    world(on, w)
+  test('says when the last turn was interrupted', async ($, on) => {
+    world(on, {})
+    await turn($, 'Half', { isAborted: true })
     const ui = await openState($)
-    await ui.press({ key: 'state-refresh' })
-    expect(await ui.find({ text: 'no pull request for this branch' })).toBeDefined()
 
-    w.pr = { stderr: 'gh: To get started with GitHub CLI, please run:  gh auth login' }
-    await ui.press({ key: 'state-refresh' })
-    expect(await ui.find({ text: /PR unknown: gh: To get started/ })).toBeDefined()
+    expect(await ui.find({ text: /^Interrupted · / })).toBeDefined()
   })
 
-  test('says when the working directory is not a repository', async ($, on) => {
+  test('says when the directory is not a repository', async ($, on) => {
     world(on, { isRepo: false })
     const ui = await openState($)
     await ui.press({ key: 'state-refresh' })
 
-    expect(await ui.find({ text: /\/work\/app is not a git repository/ })).toBeDefined()
+    expect(await ui.find({ text: /not a git repository/ })).toBeDefined()
   })
 })
 
-describe('turns', () => {
-  test('shows each finished turn by its answer’s first line, newest first, and how it ended', async ($, on) => {
-    world(on, {})
-    await turn($, '## Fixed the parser\n\nDetails follow.')
-    await turn($, 'Stopped halfway', { isAborted: true })
+describe('needs you', () => {
+  test('lists each problem with what it asks of the person, and stays away when there is none', async ($, on) => {
+    const w: World = { status: '## main...origin/main\n' }
+    world(on, w)
     const ui = await openState($)
+    await ui.press({ key: 'state-refresh' })
+    expect(await ui.find({ text: 'Needs you' })).toBeUndefined()
 
-    const rows = (await ui.findAll({ text: /^\s*\d\d:\d\d · / })).filter(r => !/\s$/.test(r.text)) // the row, not its time label
-    expect(rows.map(r => r.text.replace(/^\s*\d\d:\d\d · /, ''))).toEqual([
-      '2m · interrupted  Stopped halfway',
-      '2m  Fixed the parser',
-    ])
-    expect(await ui.find({ text: /waiting on you since/ })).toBeDefined()
+    w.status = '## feat/x...origin/feat/x [behind 3]\n'
+    w.pr = { json: PR_FAILING }
+    await ui.press({ key: 'state-refresh' })
+    expect(await ui.find({ text: 'Needs you' })).toBeDefined()
+    expect(await ui.find({ text: /#12: 2 checks failing — test, ci\/legacy/ })).toBeDefined()
+    expect(await ui.find({ text: /#12 has merge conflicts/ })).toBeDefined()
+    expect(await ui.find({ text: /#12: changes requested/ })).toBeDefined()
+    expect(await ui.find({ text: /3 behind origin\/feat\/x/ })).toBeDefined()
   })
 
-  test('lists a question the last answer ended on, until the next turn starts', async ($, on) => {
+  test('quotes the question the last answer ended on, until the next prompt', async ($, on) => {
     world(on, {})
     await turn($, 'I can do either.\n\nShould I keep the old command as an alias?')
     const ui = await openState($)
-    expect(await ui.find({ text: /ends on a question: Should I keep the old command as an alias\?/ })).toBeDefined()
+    expect(await ui.find({ text: /Claude asked: Should I keep the old command as an alias\?/ })).toBeDefined()
 
     await $.prompt.submit({ text: 'no', wait: false, origin: { kind: 'composer' } })
-    expect(await ui.find({ text: /ends on a question/ })).toBeUndefined()
-    expect(await ui.find({ text: /Claude is working/ })).toBeDefined()
+    expect(await ui.find({ text: /Claude asked/ })).toBeUndefined()
+    expect(await ui.find({ text: /^Working · / })).toBeDefined()
   })
 
   test('lists an AskUserQuestion while it waits, then drops it', async ($, on) => {
@@ -171,5 +191,32 @@ describe('turns', () => {
 
     expect(seen).toContain('Claude is asking: Which tab next?')
     expect(await ui.find({ text: /Claude is asking/ })).toBeUndefined()
+  })
+})
+
+describe('where the person left off', () => {
+  test('repeats their request in their own words, and whether it finished', async ($, on) => {
+    world(on, {})
+    await turn($, 'All green.', { prompt: 'Run some tests to see how it behaves\nand report' })
+    const ui = await openState($)
+
+    expect(await ui.find({ text: /You asked “Run some tests to see how it behaves” — answered/ })).toBeDefined()
+  })
+
+  test('shows the last activity in order, without the commands that only look', async ($, on) => {
+    world(on, { status: '## main...origin/main\n' })
+    await $.prompt.submit({ text: 'go', wait: false, origin: { kind: 'composer' } })
+    await $.tool.call({ tool: 'Bash', command: 'git status && ls' })
+    await $.tool.call({ tool: 'Edit', file_path: '/work/app/src/a.ts', old_string: 'a', new_string: 'b' })
+    await $.tool.call({ tool: 'Bash', command: 'cd /work/app && npm test' })
+    await $.tool.call({ tool: 'Bash', command: 'git status 2>&1 >/dev/null; cat > notes.md' })
+    const ui = await openState($)
+
+    const kinds = (await ui.findAll({ text: /^\s+(?:edited|ran)\s*$/ })).map(r => r.text.trim())
+    expect(kinds).toEqual(['edited', 'ran', 'ran'])
+    expect(await ui.find({ text: 'cat > notes.md' })).toBeDefined()
+    expect(await ui.find({ text: 'src/a.ts' })).toBeDefined()
+    expect(await ui.find({ text: 'npm test' })).toBeDefined()
+    expect(await ui.find({ text: /git status/ })).toBeUndefined()
   })
 })

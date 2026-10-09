@@ -3,6 +3,7 @@ import type { EngineInterface, Register, RenderInput, ToolCallInput, ToolCallRes
 
 import type {
   Action,
+  Activity,
   Blocked,
   Command,
   Commit,
@@ -244,6 +245,37 @@ const addUse = (place: Place, path: string, isBlocked = false): Place => {
       ? place.used.map(f => (f === had ? add(f) : f))
       : [...place.used, add({ path: rel, reads: 0, searches: 0 })],
   }
+}
+
+// Commands that only look: they are recorded under their directory but are not activity.
+const LOOKS_ONLY =
+  /^(?:ls|cat|head|tail|less|grep|rg|find|sed\s+-n|wc|pwd|echo|which|jq|tree|stat|file|diff|sleep|true|git\s+(?:status|log|diff|show|branch|remote|rev-parse|ls-files|fetch|worktree\s+list)|gh\s+(?:pr|issue|run)\s+(?:view|list|status|checks|diff))\b/
+const KEPT_ACTIVITY = 40
+
+/** Appends to the activity trail; a failure here loses the line, never the rest of the recording. */
+async function logActivity($: $, kind: Activity['kind'], label: string, dir?: string) {
+  try {
+    const at = await $.clock.now()
+    await update($, outputs, out => ({
+      ...out,
+      activity: [...(out.activity ?? []), { at, kind, label: label.slice(0, 120), dir }].slice(-KEPT_ACTIVITY),
+    }))
+  } catch {
+    // The trail is a cue; the record it sits beside matters more.
+  }
+}
+
+/** A command's activity line: its last step that does more than look, or nothing when every step only looks. */
+const doingStep = (text: string) => {
+  const steps = text
+    .split(/\n|&&|\|\||;/)
+    .map(step => step.trim().replace(/^cd\s+\S+$/, ''))
+    .filter(Boolean)
+  // A redirect to a file writes, whatever command it follows (`cat > f`); not `2>&1` or `>/dev/null`.
+  const writes = (step: string) => /(?:^|[^0-9&])>>?\s*(?!&|\/dev\/null)[^\s&|;]/.test(step)
+  const doing = steps.filter(step => !LOOKS_ONLY.test(step) || writes(step))
+
+  return doing.at(-1)
 }
 
 const addGlobal = ($: $, list: 'github' | 'services' | 'scheduled', action: Action) =>
@@ -493,6 +525,10 @@ async function recordBash(
     ...place,
     commands: [...place.commands, command].slice(-MAX_COMMANDS),
   }))
+  const step = isBlocked ? undefined : doingStep(text)
+  if (step) {
+    await logActivity($, 'ran', step, (await placeOf($, await canon($, dir))).root)
+  }
   if (!out) {
     if (ran.isError && !isBlocked) {
       await recordGh($, text, ran.text ?? '', dir, undefined, true)
@@ -577,6 +613,7 @@ async function recordBash(
       await touch($, dir, place =>
         place.commits.some(c => isSame(c.sha, commit.sha)) ? place : { ...place, commits: [...place.commits, commit] },
       )
+      await logActivity($, 'committed', `${commit.sha} ${commit.subject}`, root)
     }
   }
   if (git?.push) {
@@ -584,6 +621,7 @@ async function recordBash(
     await touch($, dir, place =>
       place.pushes.includes(branch) ? place : { ...place, pushes: [...place.pushes, branch] },
     )
+    await logActivity($, 'pushed', branch, (await placeOf($, await canon($, dir))).root)
   }
   if (git?.branch) {
     const label = `${git.branch.action} ${git.branch.ref}`
@@ -597,6 +635,7 @@ async function recordBash(
     await touch($, dir, place =>
       place.branches.includes(name) ? place : { ...place, branches: [...place.branches, name] },
     )
+    await logActivity($, 'branched', name, (await placeOf($, await canon($, dir))).root)
   }
 
   const gone = deletions(text)
@@ -606,6 +645,9 @@ async function recordBash(
       deleted: gone.local.length ? addNames(place.deleted, gone.local) : place.deleted,
       remoteDeleted: gone.remote.length ? addNames(place.remoteDeleted, gone.remote) : place.remoteDeleted,
     }))
+    const root = (await placeOf($, await canon($, dir))).root
+    for (const name of gone.local) await logActivity($, 'deleted branch', name, root)
+    for (const name of gone.remote) await logActivity($, 'deleted branch', `${name} on the remote`, root)
   }
 
   const worktree = WORKTREE_ADD.exec(text)
@@ -695,6 +737,7 @@ async function recordGh(
   }
   const what = pr ? `PR #${pr.number} ${pr.action}` : `${noun} ${gh?.[2] ?? ''}${number ? ` #${number}` : ''}`
   await addGlobal($, 'github', { label: isFailed ? `${what} (command exited with an error)` : what, url })
+  await logActivity($, 'github', isFailed ? `${what} (exited with an error)` : what)
 }
 
 async function recordRead($: $, e: Extract<ToolCallInput, { tool: 'Read' }>, ran: ToolCallResult<'Read'>) {
@@ -712,6 +755,7 @@ async function recordEdit($: $, e: Extract<ToolCallInput, { tool: 'Edit' }>, ran
     await touch($, dirname(path), place =>
       addChange(place, { path, ...countHunks(out.structuredPatch) }),
     )
+    await logActivity($, 'edited', path, (await placeOf($, dirname(path))).root)
   }
 }
 
@@ -726,6 +770,7 @@ async function recordWrite($: $, e: Extract<ToolCallInput, { tool: 'Write' }>, r
     await touch($, dirname(path), place =>
       addChange(place, { path, ...counts, isCreated: isCreated || undefined }),
     )
+    await logActivity($, isCreated ? 'created' : 'edited', path, (await placeOf($, dirname(path))).root)
   }
 }
 

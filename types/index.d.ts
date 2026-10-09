@@ -65,7 +65,19 @@ export type Blocked = {
   dir?: string
 }
 
+/** One thing the session did, in the order it happened: the trail that cues re-entry. */
+export type Activity = {
+  /** Milliseconds since the epoch. */
+  at: number
+  kind: 'edited' | 'created' | 'ran' | 'committed' | 'pushed' | 'branched' | 'deleted branch' | 'github'
+  label: string
+  /** The repository or directory it happened in. */
+  dir?: string
+}
+
 export type Outputs = {
+  /** Newest last; absent in a record kept from before it was kept. */
+  activity?: Activity[]
   /** Absent in a record kept from before blocked calls were followed. */
   blocked?: Blocked[]
   places: Place[]
@@ -106,6 +118,8 @@ export type Position = {
 /** One main-loop turn: from the prompt to the answer. */
 export type Turn = {
   startedAt: number
+  /** The person's request, first line. */
+  prompt?: string
   endedAt?: number
   /** As the engine measured it. */
   durationMs?: number

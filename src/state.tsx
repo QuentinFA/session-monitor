@@ -73,12 +73,6 @@ const ago = (at: number, from: number) => {
   return `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}`
 }
 
-const clockTime = (at: number) => {
-  const d = new Date(at)
-
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-}
-
 /** A tool and its subject, in a few words. */
 const describeTool = (tool: string, input: Record<string, unknown>) => {
   const subject = [input.description, input.command, input.file_path, input.pattern, input.url, input.query].find(
@@ -88,126 +82,135 @@ const describeTool = (tool: string, input: Record<string, unknown>) => {
   return subject ? `${tool}: ${subject.split('\n')[0]?.slice(0, 60)}` : tool
 }
 
-/** The State tab's body. */
+const KIND_WIDTH = 10
+const SHOWN_ACTIVITY = 4
+
+/** A path inside `dir` as a relative one. */
+const within = (label: string, dir?: string) => (dir && label.startsWith(`${dir}/`) ? label.slice(dir.length + 1) : label)
+const base = (dir?: string) => dir?.split('/').filter(Boolean).at(-1)
+
+/** Position in one line: quiet when normal. */
+const positionLine = (pos: Position | null) => {
+  if (!pos) return 'not read yet'
+  if (!pos.isRepo) return 'not a git repository'
+  const changed = pos.staged + pos.unstaged + pos.untracked
+  const pr = pos.pr
+  const prText = pr
+    ? `#${pr.number} ${pr.isDraft ? 'draft' : pr.state.toLowerCase()}${pr.failing ? ` ✗${pr.failing}` : pr.pending ? ` …${pr.pending}` : pr.passing ? ' ✓' : ''}`
+    : pos.prError
+      ? 'PR unknown'
+      : 'no PR'
+
+  return [
+    `${pos.branch ?? '(detached)'}${pos.ahead ? ` ↑${pos.ahead}` : ''}${pos.behind ? ` ↓${pos.behind}` : ''}`,
+    changed ? `${changed} changed` : 'clean',
+    prText,
+  ].join(' · ')
+}
+
+/** The State tab's body: what a person returning to the session needs, exceptions first. */
 async function drawState($: $, e: RenderInput<'Pane'>) {
   const { Box, Text, Button } = $.ui.resolve(e)
   const pos = await read($, position)
   const history = await read($, turns)
   const current = await read($, now)
-  const blocked = (await read($, outputs)).blocked?.length ?? 0
+  const out = await read($, outputs)
   const at = await $.clock.now()
   const last = history.at(-1)
 
-  // What waits on the person, each with where it comes from.
-  const needs: string[] = []
-  if (current?.asking) needs.push(`Claude is asking: ${current.asking}`)
-  if (!current?.isWorking && last?.question) needs.push(`Claude's last answer ends on a question: ${last.question}`)
-  if (pos?.pr?.failing) needs.push(`${pos.pr.failing} check${pos.pr.failing === 1 ? '' : 's'} failing on #${pos.pr.number}: ${pos.pr.failingNames.join(', ')}`)
-  if (pos?.pr?.reviewDecision === 'CHANGES_REQUESTED') needs.push(`Changes requested on #${pos.pr.number}`)
-  if (pos?.pr?.mergeable === 'CONFLICTING') needs.push(`#${pos.pr.number} has merge conflicts`)
-  if (blocked > 0) needs.push(`${blocked} call${blocked === 1 ? '' : 's'} blocked this session (see Outputs)`)
+  // The state label leads: what the session is doing, and for how long.
+  const label = !current
+    ? { text: 'No turn yet', color: undefined }
+    : current.isWorking
+      ? { text: `Working · ${ago(current.since, at)}${current.tool ? ` · ${current.tool}` : ''}`, color: 'cyan' }
+      : last?.reason === 'interrupted'
+        ? { text: `Interrupted · ${ago(current.since, at)} ago`, color: 'yellow' }
+        : last?.reason === 'error' || last?.reason === 'refusal'
+          ? { text: `Stopped: ${last.reason} · ${ago(current.since, at)} ago`, color: 'red' }
+          : { text: `Waiting on you · ${ago(current.since, at)}`, color: undefined }
 
-  const prLine = (pr: NonNullable<Position['pr']>) => {
-    const checks = [pr.failing && `${pr.failing} failing`, pr.pending && `${pr.pending} pending`, pr.passing && `${pr.passing} passing`]
-      .filter(Boolean)
-      .join(', ')
-    const review = { APPROVED: 'approved', CHANGES_REQUESTED: 'changes requested', REVIEW_REQUIRED: 'review required' }[pr.reviewDecision]
+  // What needs the person: each says the decision or the fact, and where it comes from.
+  const needs: { text: string; color: string }[] = []
+  if (current?.asking) needs.push({ text: `Claude is asking: ${current.asking}`, color: 'yellow' })
+  if (!current?.isWorking && last?.question) needs.push({ text: `Claude asked: ${last.question}`, color: 'yellow' })
+  const pr = pos?.pr
+  if (pr?.failing) needs.push({ text: `#${pr.number}: ${pr.failing} check${pr.failing === 1 ? '' : 's'} failing — ${pr.failingNames.join(', ')}`, color: 'red' })
+  if (pr?.mergeable === 'CONFLICTING') needs.push({ text: `#${pr.number} has merge conflicts`, color: 'red' })
+  if (pr?.reviewDecision === 'CHANGES_REQUESTED') needs.push({ text: `#${pr.number}: changes requested`, color: 'yellow' })
+  if (pos?.behind) needs.push({ text: `${pos.behind} behind ${pos.upstream ?? 'upstream'}`, color: 'yellow' })
+  const blocked = out.blocked?.length ?? 0
+  if (blocked) needs.push({ text: `${blocked} blocked call${blocked === 1 ? '' : 's'} → Outputs`, color: 'yellow' })
 
-    return [`#${pr.number} ${pr.isDraft ? 'draft' : pr.state.toLowerCase()}`, review, checks ? `checks: ${checks}` : 'no checks']
-      .filter(Boolean)
-      .join(' · ')
-  }
+  const asked = last?.prompt
+  const askedStatus = !last ? '' : !last.endedAt ? 'in progress' : (last.reason ?? 'answered')
+  const trail = (out.activity ?? []).slice(-SHOWN_ACTIVITY)
+  const running = out.scheduled.filter(a => a.taskId && !a.isDone)
 
   return (
     <Box flexDirection="column">
-      <Box marginBottom={1}>
-        <Button key="state-refresh" label="Refresh" onPress={() => refresh($)} />
-        <Text dimColor>{pos ? `  read ${ago(pos.readAt, at)} ago` : '  not read yet'}</Text>
+      <Box>
+        <Text bold color={label.color} wrap="truncate-end">
+          {label.text}
+        </Text>
+        <Box flexGrow={1} />
+        <Box flexShrink={0}>
+          <Text dimColor>
+            {positionLine(pos)}
+            {pos ? ` · ${ago(pos.readAt, at)}` : ''}{' '}
+          </Text>
+          <Button key="state-refresh" plain label="↻" onPress={() => refresh($)} />
+        </Box>
       </Box>
 
-      <Text bold>Position</Text>
-      {!pos ? (
-        <Text dimColor>  Read at the first event of the session, or with Refresh.</Text>
-      ) : !pos.isRepo ? (
-        <Text dimColor wrap="truncate-start">  {pos.dir} is not a git repository</Text>
-      ) : (
-        <Box flexDirection="column" paddingLeft={2}>
-          <Text wrap="truncate-end">
-            <Text bold>{pos.branch ?? '(detached)'}</Text>
-            {pos.upstream ? <Text dimColor> → {pos.upstream}</Text> : <Text dimColor> no upstream</Text>}
-            {pos.ahead > 0 && <Text color="yellow"> ↑{pos.ahead}</Text>}
-            {pos.behind > 0 && <Text color="yellow"> ↓{pos.behind}</Text>}
-          </Text>
-          <Text dimColor={pos.staged + pos.unstaged + pos.untracked === 0}>
-            {pos.staged + pos.unstaged + pos.untracked === 0
-              ? 'clean'
-              : [pos.staged && `${pos.staged} staged`, pos.unstaged && `${pos.unstaged} modified`, pos.untracked && `${pos.untracked} untracked`]
-                  .filter(Boolean)
-                  .join(' · ')}
-          </Text>
-          {pos.pr ? (
-            <Text color={pos.pr.failing ? 'red' : undefined} wrap="truncate-end">
-              {prLine(pos.pr)}
+      {needs.length > 0 && (
+        <Box key="needs" flexDirection="column" marginTop={1}>
+          <Text bold>Needs you</Text>
+          {needs.map((n, i) => (
+            <Text key={`need:${i}`} color={n.color} wrap="truncate-end">
+              {'  • '}
+              {n.text}
             </Text>
-          ) : pos.prError ? (
-            <Text dimColor wrap="truncate-end">PR unknown: {pos.prError}</Text>
-          ) : (
-            <Text dimColor>no pull request for this branch</Text>
-          )}
+          ))}
         </Box>
       )}
 
-      <Box marginTop={1}>
-        <Text bold>Now  </Text>
-        {!current ? (
-          <Text dimColor>no turn yet</Text>
-        ) : current.isWorking ? (
-          <Text color="cyan" wrap="truncate-end">
-            Claude is working · {ago(current.since, at)}
-            {current.tool ? ` · ${current.tool}` : ''}
+      {asked && (
+        <Box key="asked" marginTop={1}>
+          <Text wrap="truncate-end">
+            <Text bold>You asked </Text>“{asked}”<Text dimColor> — {askedStatus}</Text>
           </Text>
-        ) : (
-          <Text>waiting on you since {clockTime(current.since)}</Text>
-        )}
-      </Box>
+        </Box>
+      )}
 
-      <Box marginTop={1} flexDirection="column">
-        <Text bold color={needs.length ? 'yellow' : undefined}>
-          Needs you
-        </Text>
-        {needs.length === 0 ? (
-          <Text dimColor>  nothing found</Text>
-        ) : (
-          needs.map((n, i) => (
-            <Text key={`need:${i}`} color="yellow" wrap="truncate-end">
-              {'  • '}
-              {n}
-            </Text>
-          ))
-        )}
-      </Box>
-
-      <Box marginTop={1} flexDirection="column">
-        <Text bold>Recently done</Text>
-        {history.filter(t => t.endedAt).length === 0 ? (
-          <Text dimColor>  no finished turn yet</Text>
-        ) : (
-          [...history]
-            .filter(t => t.endedAt)
-            .reverse()
-            .map(t => (
-              <Text key={`turn:${t.startedAt}`} wrap="truncate-end">
+      {trail.length > 0 && (
+        <Box key="trail" flexDirection="column" marginTop={1}>
+          <Text bold>Last activity</Text>
+          {trail.map((a, i) => (
+            <Box key={`act:${i}`}>
+              <Text dimColor>{'  '}{a.kind.padEnd(KIND_WIDTH)}</Text>
+              <Text wrap="truncate-end">{within(a.label, a.dir)}</Text>
+              <Box flexGrow={1} />
+              <Box flexShrink={0}>
                 <Text dimColor>
-                  {'  '}
-                  {clockTime(t.startedAt)} · {ago(0, t.durationMs ?? (t.endedAt ?? t.startedAt) - t.startedAt)}
-                  {t.reason ? ` · ${t.reason}` : ''}
-                  {'  '}
+                  {a.dir && a.dir !== pos?.dir && !pos?.dir?.startsWith(`${a.dir}/`) ? ` ${base(a.dir)}` : ''} {ago(a.at, at)}
                 </Text>
-                {t.summary ?? ''}
-              </Text>
-            ))
-        )}
-      </Box>
+              </Box>
+            </Box>
+          ))}
+        </Box>
+      )}
+
+      {running.length > 0 && (
+        <Box key="running" flexDirection="column" marginTop={1}>
+          <Text bold>Running</Text>
+          {running.map((a, i) => (
+            <Text key={`run:${i}`} wrap="truncate-end">
+              {'  • '}
+              {a.label}
+            </Text>
+          ))}
+        </Box>
+      )}
     </Box>
   )
 }
@@ -217,7 +220,8 @@ export const registerState: Register = on => {
     startTimer($)
     const at = await $.clock.now()
     await update($, now, () => ({ isWorking: true, since: at }))
-    await update($, turns, list => [...list, { startedAt: at }].slice(-KEPT_TURNS))
+    const prompt = e.text.trim().split('\n')[0]?.slice(0, 160)
+    await update($, turns, list => [...list, { startedAt: at, prompt }].slice(-KEPT_TURNS))
 
     return next(e)
   }).catch(($, e, next) => next(e))
@@ -253,7 +257,7 @@ export const registerState: Register = on => {
       await update($, turns, list => {
         const open = list.at(-1)
         const startedAt = open && !open.endedAt ? open.startedAt : at - e.durationMs
-        const turn: Turn = { startedAt, endedAt: at, durationMs: e.durationMs, reason, ...answer }
+        const turn: Turn = { startedAt, prompt: open && !open.endedAt ? open.prompt : undefined, endedAt: at, durationMs: e.durationMs, reason, ...answer }
 
         return open && !open.endedAt ? [...list.slice(0, -1), turn] : [...list, turn].slice(-KEPT_TURNS)
       }).catch(() => undefined)
