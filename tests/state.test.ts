@@ -10,6 +10,8 @@ type World = {
   pr?: { json?: string; stderr?: string }
   /** Is the directory a repository. */
   isRepo?: boolean
+  /** More of the Bash result's fields, by command. */
+  bash?: (command: string) => Record<string, unknown>
 }
 
 const run = (exitCode: number, stdout: string, stderr = '') => ({
@@ -39,7 +41,9 @@ function world(on: On, w: World) {
   on('command.run', () => ({ text: '' }))
   on('ui.open', () => ({ value: { isPlaced: true as const } }))
   on('fs.stat', (_$, e) => ({ value: { kind: 'dir' as const, size: 0, mtimeMs: 0, isLink: false, realPath: e.path } }))
-  on('tool.call', { tool: 'Bash' }, () => ({ result: { stdout: '', stderr: '', interrupted: false } }))
+  on('tool.call', { tool: 'Bash' }, (_$, e) => ({
+    result: { stdout: '', stderr: '', interrupted: false, ...w.bash?.(e.command) },
+  }))
   on('tool.call', { tool: 'Edit' }, (_$, e) => ({
     result: {
       filePath: e.file_path,
@@ -241,10 +245,10 @@ describe('needs you', () => {
 describe('where the person left off', () => {
   test('repeats their request in their own words, and whether it finished', async ($, on) => {
     world(on, {})
-    await turn($, 'All green.', { prompt: 'Run some tests to see how it behaves\nand report' })
+    await turn($, 'All green.', { prompt: 'Working:\nRun some tests to see how it behaves' })
     const ui = await openState($)
 
-    expect(await ui.find({ text: /You asked \(answered\) “Run some tests to see how it behaves”/ })).toBeDefined()
+    expect(await ui.find({ text: /You asked \(answered\) “Working: Run some tests to see how it behaves”/ })).toBeDefined()
   })
 
   for (const surface of ['terminal', 'desktop'] as const) {
@@ -275,6 +279,28 @@ describe('where the person left off', () => {
     const ui = await openState($)
 
     expect(await ui.find({ text: /You asked \(answered\) “Build the tab”/ })).toBeDefined()
+  })
+
+  test('tells an inline script by the files it wrote, and skips variable assignments', async ($, on) => {
+    world(on, {
+      bash: command =>
+        command.startsWith('python3')
+          ? {
+              bashEditDiff: {
+                files: [{ filePath: '/work/app/src/a.ts', hunks: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-a', '+b'] }] }],
+                moreFiles: 0,
+              },
+            }
+          : {},
+    })
+    await $.prompt.submit({ text: 'go', wait: false, origin: { kind: 'composer' } })
+    await $.tool.call({ tool: 'Bash', command: "python3 - <<'EOF'\nopen('src/a.ts','w').write('b')\nEOF" })
+    await $.tool.call({ tool: 'Bash', command: 'T=types.d.ts; grep -n x $T' })
+    const ui = await openState($)
+
+    expect(await ui.find({ type: 'Text', text: 'src/a.ts' })).toBeDefined()
+    expect(await ui.find({ text: /python3/ })).toBeUndefined()
+    expect(await ui.find({ text: /T=types/ })).toBeUndefined()
   })
 
   test('shows commands without their plumbing, and commits by subject', async ($, on) => {

@@ -266,7 +266,9 @@ export const registerState: Register = on => {
     // Only what the person typed is their request: a task's notice or another session's message
     // also starts a turn, but asks nothing in the person's words.
     const isPersons = e.origin.kind === 'composer' || e.origin.kind === 'bridge'
-    const prompt = isPersons ? e.text.trim().split('\n')[0]?.slice(0, 300) : undefined
+    // Their whole message, condensed to one line: its first line may be a pasted label.
+    const condensed = e.text.replace(/\s+/g, ' ').trim()
+    const prompt = isPersons ? (condensed.length > 200 ? `${condensed.slice(0, 199)}…` : condensed) : undefined
     await update($, turns, list => [...list, { startedAt: at, prompt }].slice(-KEPT_TURNS))
 
     return next(e)

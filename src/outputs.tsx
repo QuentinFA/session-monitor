@@ -249,8 +249,11 @@ const addUse = (place: Place, path: string, isBlocked = false): Place => {
 
 // Commands that only look: they are recorded under their directory but are not activity.
 const LOOKS_ONLY =
-  /^(?:ls|cat|head|tail|less|grep|rg|find|sed\s+-n|wc|pwd|echo|which|jq|tree|stat|file|diff|sleep|true|git\s+(?:status|log|diff|show|branch|remote|rev-parse|ls-files|fetch|worktree\s+list)|gh\s+(?:pr|issue|run)\s+(?:view|list|status|checks|diff))\b/
+  /^(?:[A-Za-z_][A-Za-z0-9_]*=\S*$|ls|cat|head|tail|less|grep|rg|find|sed\s+-n|wc|pwd|echo|which|jq|tree|stat|file|diff|sleep|true|git\s+(?:status|log|diff|show|branch|remote|rev-parse|ls-files|fetch|worktree\s+list)|gh\s+(?:pr|issue|run)\s+(?:view|list|status|checks|diff))\b/
 const KEPT_ACTIVITY = 40
+// A script handed to an interpreter inline: its command line says nothing of what it did.
+const INLINE_SCRIPT = /^(?:python3?|node|ruby|perl|bash|sh|zsh)\s+(?:-\s|-[ce]\s|-$)|<<-?\s*['"]?\w+['"]?\s*$/
+const SHOWN_WRITES = 3
 
 /** Appends to the activity trail; a failure here loses the line, never the rest of the recording. */
 async function logActivity($: $, kind: Activity['kind'], label: string, dir?: string) {
@@ -526,10 +529,23 @@ async function recordBash(
     commands: [...place.commands, command].slice(-MAX_COMMANDS),
   }))
   const step = isBlocked ? undefined : doingStep(text)
-  if (step) {
-    await logActivity($, 'ran', step, (await placeOf($, await canon($, dir))).root)
+  const root = (await placeOf($, await canon($, dir))).root
+  // The files this command changed, for the trail: an inline script is better told by what it wrote.
+  const wrote: string[] = []
+  const logRun = async () => {
+    const isInlineScript = step !== undefined && INLINE_SCRIPT.test(step)
+    if (step && !(isInlineScript && wrote.length > 0)) {
+      await logActivity($, 'ran', step, root)
+    }
+    for (const path of wrote.slice(0, SHOWN_WRITES)) {
+      await logActivity($, 'edited', path, (await placeOf($, dirname(path))).root)
+    }
+    if (wrote.length > SHOWN_WRITES) {
+      await logActivity($, 'edited', `${wrote.length - SHOWN_WRITES} more files`, root)
+    }
   }
   if (!out) {
+    await logRun()
     if (ran.isError && !isBlocked) {
       await recordGh($, text, ran.text ?? '', dir, undefined, true)
     }
@@ -548,6 +564,7 @@ async function recordBash(
       for (const file of diff.files) {
         counted.add(file.filePath)
         const path = await canon($, file.filePath)
+        wrote.push(path)
         await touch($, dirname(path), place =>
           addChange(place, {
             path,
@@ -572,6 +589,7 @@ async function recordBash(
       const added = Math.max(0, now.added - was.added)
       const removed = Math.max(0, now.removed - was.removed)
       if (added + removed > 0) {
+        wrote.push(`${root}/${rel}`)
         await touch($, root, place => addChange(place, { path: `${root}/${rel}`, added, removed }))
       }
     }
@@ -581,12 +599,15 @@ async function recordBash(
           .run(['git', 'diff', '--no-index', '--numstat', '/dev/null', rel], { cwd: root, timeoutMs: 5000 })
           .catch(() => undefined)
         const added = Number(counted?.stdout.split('\t')[0]) || 0
+        wrote.push(`${root}/${rel}`)
         await touch($, root, place =>
           addChange(place, { path: `${root}/${rel}`, added, removed: 0, isCreated: true }),
         )
       }
     }
   }
+
+  await logRun()
 
   // Commits: every one a `git commit` command added to HEAD — the engine reports only the last,
   // and nothing when the output was rewritten — labelled from the engine's report where it has one.
