@@ -15,8 +15,8 @@ pane has the keyboard. `/session-monitor <tab>` opens it on that tab.
 
 ## outputs
 
-`/outputs` opens the monitor on this tab and prints a short summary. `/outputs reset` clears the
-record. The status line keeps a one-line count: `3 dirs · +120 −30 · 2 commits · 1 blocked`.
+`/session-monitor outputs` opens the monitor on this tab. The status line keeps a one-line count:
+`3 dirs · +120 −30 · 2 commits · 1 blocked`.
 
 ### What it shows
 
@@ -37,10 +37,10 @@ summary line until opened:
 - branches created, deleted locally (struck through) and deleted on the remote; pushes
 - commits, each expandable to its files with `+/−` lines
 - files changed, with `+/−` lines, new and deleted marked
-- files read, and every command run there
+- files read, and every command run there; a refused read or command is marked red
 
 **Expand all / Collapse all** opens every fold. **Copy all** puts the whole record on the clipboard
-as markdown.
+as markdown. **Reset** clears it, after a confirmation.
 
 ## Install
 

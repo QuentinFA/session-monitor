@@ -46,10 +46,6 @@ export const register: Register = (on, options) => {
       name: 'session-monitor',
       description: `Open the session monitor, optionally on a tab: ${TAB_IDS.join(', ')}`,
     })
-    await $.command.register({
-      name: 'outputs',
-      description: 'Open the session monitor on Outputs: what this session used and produced',
-    })
 
     return next(e)
   })

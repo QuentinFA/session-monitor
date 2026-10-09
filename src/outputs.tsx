@@ -6,6 +6,7 @@ import type {
   Blocked,
   Command,
   Commit,
+  FileUse,
   FileChange,
   LineCount,
   Outputs,
@@ -17,6 +18,7 @@ import { MONITOR, MONITOR_TITLE } from './lib/pane'
 const EMPTY: Outputs = { places: [], github: [], services: [], scheduled: [] }
 const outputs = atom({ plugin: 'session-monitor', key: 'outputs' } as const, EMPTY)
 const expanded = atom({ plugin: 'session-monitor', key: 'expanded' } as const, [])
+const confirmReset = atom({ plugin: 'session-monitor', key: 'confirmReset' } as const, false)
 
 // Commands that move the working tree without the session authoring the change.
 const TREE_MOVES = /\bgit\s+(?:-C\s+\S+\s+)?(?:checkout|switch|pull|merge|rebase|stash|worktree)\b/
@@ -223,15 +225,17 @@ const addChange = (place: Place, change: FileChange): Place => {
   }
 }
 
-const addUse = (place: Place, path: string): Place => {
+const addUse = (place: Place, path: string, isBlocked = false): Place => {
   const rel = relative(place, path)
   const had = place.used.find(f => f.path === rel)
+  const add = (f: FileUse): FileUse =>
+    isBlocked ? { ...f, blocked: (f.blocked ?? 0) + 1 } : { ...f, reads: f.reads + 1 }
 
   return {
     ...place,
     used: had
-      ? place.used.map(f => (f === had ? { ...f, reads: f.reads + 1 } : f))
-      : [...place.used, { path: rel, reads: 1, searches: 0 }],
+      ? place.used.map(f => (f === had ? add(f) : f))
+      : [...place.used, add({ path: rel, reads: 0, searches: 0 })],
   }
 }
 
@@ -366,7 +370,7 @@ function report(out: Outputs) {
     }
     if (place.used.length) {
       parts.push('\n### Read')
-      for (const f of place.used) parts.push(`- ${f.path}${f.reads > 1 ? ` ×${f.reads}` : ''}`)
+      for (const f of place.used) parts.push(`- ${f.path}${f.reads > 1 ? ` ×${f.reads}` : ''}${f.blocked ? ' — blocked' : ''}`)
     }
     if (place.commands.length) {
       parts.push('\n### Commands', '```sh')
@@ -376,32 +380,6 @@ function report(out: Outputs) {
         parts.push(`${first}${c.isBackground ? ' &' : ''}${c.isError ? '  # failed' : ''}${c.isBlocked ? '  # blocked' : ''}${more}`)
       }
       parts.push('```')
-    }
-  }
-
-  return parts.length === 1 ? 'Nothing used or produced yet.' : parts.join('\n')
-}
-
-function summary(out: Outputs) {
-  const parts: string[] = ['# Session outputs']
-  for (const place of out.places) {
-    parts.push(`\n## ${short(place.root)}${place.remote ? ` (${place.remote})` : ''}`)
-    if (place.branches.length) parts.push(`- branches: ${place.branches.join(', ')}`)
-    if (place.pushes.length) parts.push(`- pushed: ${place.pushes.join(', ')}`)
-    for (const c of place.commits) parts.push(`- commit ${c.sha} ${c.subject}`)
-    for (const f of place.changed)
-      parts.push(`- +${f.added} −${f.removed} ${f.path}${f.isCreated ? ' (new)' : ''}${f.isDeleted ? ' (deleted)' : ''}`)
-    if (place.used.length) parts.push(`- read ${place.used.length} file(s)`)
-    if (place.commands.length) parts.push(`- ran ${place.commands.length} command(s)`)
-  }
-  for (const [title, list] of [
-    ['GitHub', out.github],
-    ['Services', out.services.filter(a => !a.isUse)],
-    ['Scheduled & running', out.scheduled],
-  ] as const) {
-    if (list.length) {
-      parts.push(`\n## ${title}`)
-      for (const a of list) parts.push(`- ${a.label}${a.url ? ` ${a.url}` : ''}`)
     }
   }
 
@@ -673,9 +651,10 @@ async function recordGh(
 }
 
 async function recordRead($: $, e: Extract<ToolCallInput, { tool: 'Read' }>, ran: ToolCallResult<'Read'>) {
-  if (ran.deny === undefined && !ran.isError) {
+  const isBlocked = refusal(ran) !== undefined
+  if (isBlocked || (ran.deny === undefined && !ran.isError)) {
     const path = await canon($, e.file_path)
-    await touch($, dirname(path), place => addUse(place, path))
+    await touch($, dirname(path), place => addUse(place, path, isBlocked))
   }
 }
 
@@ -745,20 +724,6 @@ async function recordOther($: $, e: ToolCallInput, ran: ToolCallResult) {
 }
 
 export const registerOutputs: Register = on => {
-  on('command.run', { command: 'outputs' }, async ($, e) => {
-    if (e.args.trim() === 'reset') {
-      await update($, outputs, () => EMPTY)
-      await update($, expanded, () => [])
-      await refreshStatus($)
-
-      return { text: 'Session outputs cleared.' }
-    }
-    await update($, activeTab, () => 'outputs')
-    await $.ui.open({ id: MONITOR, title: MONITOR_TITLE })
-
-    return { text: summary(await read($, outputs)) }
-  })
-
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
     const dir = await commandDir($, e.command).catch(() => undefined)
     const before = dir ? await snapshot($, dir).catch(() => undefined) : undefined
@@ -833,6 +798,14 @@ export const registerOutputs: Register = on => {
   )
 }
 
+/** Clears the record: what the Outputs tab's confirmed Reset does. */
+async function resetOutputs($: $) {
+  await update($, outputs, () => EMPTY)
+  await update($, expanded, () => [])
+  await update($, confirmReset, () => false)
+  await refreshStatus($)
+}
+
 /** The Outputs tab's body, drawn inside the monitor's pane. */
 async function drawOutputs($: $, e: RenderInput<'Pane'>) {
   const { Box, Text, Button } = $.ui.resolve(e)
@@ -863,6 +836,7 @@ async function drawOutputs($: $, e: RenderInput<'Pane'>) {
   const places = [...out.places.filter(isProductive), ...out.places.filter(p => !isProductive(p))]
   const made = out.services.filter(a => !a.isUse)
   const used = out.services.filter(a => a.isUse)
+  const isConfirming = await read($, confirmReset)
 
   return (
     <Box flexDirection="column">
@@ -881,6 +855,16 @@ async function drawOutputs($: $, e: RenderInput<'Pane'>) {
             $.ui.toast(done.isCopied ? 'Session outputs copied' : `Copy failed: ${done.reason}`)
           }}
         />
+        <Text> </Text>
+        {isConfirming ? (
+          <Box key="resetting">
+            <Button key="reset-confirm" label="Confirm reset" variant="primary" onPress={() => resetOutputs($)} />
+            <Text> </Text>
+            <Button key="reset-cancel" label="Cancel" onPress={() => update($, confirmReset, () => false)} />
+          </Box>
+        ) : (
+          <Button key="reset" label="Reset" onPress={() => update($, confirmReset, () => true)} />
+        )}
       </Box>
       {blocked.length > 0 && (
         <Box key="blocked" flexDirection="column" marginBottom={1}>
@@ -1000,10 +984,16 @@ async function drawOutputs($: $, e: RenderInput<'Pane'>) {
                 {place.used.length > 0 && fold(`r:${k}`, 'read', place.used.length)}
                 {isOpen(`r:${k}`) &&
                   place.used.map(f => (
-                    <Text key={`r:${k}:${f.path}`} dimColor wrap="truncate-start">
-                      {'  '}
+                    <Text
+                      key={`r:${k}:${f.path}`}
+                      color={f.blocked ? 'red' : undefined}
+                      dimColor={!f.blocked}
+                      wrap="truncate-start"
+                    >
+                      {f.blocked ? '✗ ' : '  '}
                       {f.path}
                       {f.reads > 1 ? ` ×${f.reads}` : ''}
+                      {f.blocked ? '  blocked' : ''}
                     </Text>
                   ))}
                 {place.commands.length > 0 && fold(`x:${k}`, 'commands', place.commands.length)}

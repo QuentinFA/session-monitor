@@ -338,6 +338,16 @@ describe('blocked calls', () => {
     ])
   })
 
+  test('marks a refused read red in its directory, and lists it under Blocked', async ($, on) => {
+    const recorded = host(on, [{ root: '/work/app', head: 'a1' }])
+    on('tool.call', { tool: 'Read' }, () => ({ deny: 'secrets are off limits' }))
+    await $.tool.call({ tool: 'Read', file_path: '/work/app/.env' })
+
+    const out = recorded()
+    expect(out.places[0]?.used).toEqual([{ path: '.env', reads: 0, searches: 0, blocked: 1 }])
+    expect(out.blocked).toMatchObject([{ tool: 'Read', target: '/work/app/.env', reason: 'secrets are off limits' }])
+  })
+
   test('does not count an ordinary failure as blocked', async ($, on) => {
     const recorded = host(on, [{ root: '/work/app', head: 'a1' }], () => ({ isError: true, text: 'exit code 1' }))
     await $.tool.call({ tool: 'Bash', command: 'false' })
@@ -375,6 +385,37 @@ describe('blocked calls', () => {
 
     await ui.press({ key: 'copy' })
     expect(copied).toContain('## Blocked\n- Bash `rm -rf build` — not here (/work/app)')
+  })
+})
+
+describe('reset', () => {
+  test('asks for confirmation, cancels, then clears the record', async ($, on) => {
+    const recorded = host(on, [{ root: '/work/app', head: 'a1' }])
+    await $.tool.call({ tool: 'Bash', command: 'git status' })
+    const ui = await $.ui.mount({
+      plugin: 'session-monitor',
+      surface: 'terminal',
+      component: 'Pane',
+      requestId: 'session-monitor',
+      props: {
+        title: 'Session monitor',
+        isFocused: true,
+        bodyColumns: 80,
+        placement: 'dock',
+        scroll: { offset: 0, bodyRows: 40 },
+        view: {},
+      },
+    })
+
+    await ui.press({ key: 'reset' })
+    expect(await ui.find({ key: 'reset-confirm' })).toBeDefined()
+    await ui.press({ key: 'reset-cancel' })
+    expect(recorded().places).toHaveLength(1)
+
+    await ui.press({ key: 'reset' })
+    await ui.press({ key: 'reset-confirm' })
+    expect(recorded().places).toEqual([])
+    expect(await ui.find({ text: 'Nothing used or produced yet.' })).toBeDefined()
   })
 })
 
@@ -471,17 +512,11 @@ describe('the monitor', () => {
     expect(opened).toEqual(['session-monitor'])
   })
 
-  test('/outputs opens the monitor too', async ($, on) => {
+  test('has no /outputs command: the monitor replaced it', async ($, on) => {
     host(on, [])
-    const opened: string[] = []
-    on('ui.open', (_$, e) => {
-      opened.push(e.id)
+    on('command.run', () => ({ text: 'nobody answered' }))
 
-      return { value: { isPlaced: true as const } }
-    })
-    await $.command.run(typed('outputs'))
-
-    expect(opened).toEqual(['session-monitor'])
+    expect(await $.command.run(typed('outputs'))).toMatchObject({ text: 'nobody answered' })
   })
 })
 

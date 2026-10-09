@@ -2,7 +2,13 @@ export type LineCount = { path: string; added: number; removed: number }
 
 export type FileChange = LineCount & { isCreated?: boolean; isDeleted?: boolean }
 
-export type FileUse = { path: string; reads: number; searches: number }
+export type FileUse = {
+  path: string
+  reads: number
+  searches: number
+  /** Reads of it refused before they ran. */
+  blocked?: number
+}
 
 export type Command = {
   command: string
@@ -68,6 +74,8 @@ declare module 'claude-code' {
       tab: string
       outputs: Outputs
       expanded: string[]
+      /** The Outputs tab's Reset was pressed once and awaits its confirmation. */
+      confirmReset: boolean
     }
   }
 }

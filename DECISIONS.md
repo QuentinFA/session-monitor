@@ -28,7 +28,7 @@ what `reflect` should read to a known file, and the skill reads it when present.
 
 ## One pane with a tab per part
 
-*2026-10-09 · accepted*
+*2026-10-09 · accepted; "`/outputs` stays" superseded by "outputs: no command of its own; Reset is a button"*
 
 **Issue:** with a pane per part, the parts show as the engine's own tabs: mixed with other plugins'
 panes, drawn only while more than one pane is open, and reached through a command per part.
@@ -180,8 +180,9 @@ the prompt — left no trace: the recorders returned on a refusal, so a blocked 
 looked like nothing happened.
 
 **Decision:** a refused call is recorded under **Blocked**, at the top of the tab in red, with its
-tool, what it would have touched, the reason and its directory; a refused command is also marked
-red in its directory's list, and the status line counts them. Three routes report a refusal — a
+tool, what it would have touched, the reason and its directory; a refused command or read is also
+marked red in its directory's list — a refused edit is not, since nothing changed — and the status
+line counts them. Three routes report a refusal — a
 `deny` result, `classic.PermissionDenied`, and an error result whose text says the person declined
 — and the call's id keeps a refusal reported twice once.
 
@@ -191,6 +192,19 @@ as one, not a refusal.
 **Consequences:** a decline at the prompt is recognised by its wording ("doesn't want to proceed",
 "was rejected"), not by a field: if core rewords it, those declines read as ordinary failures until
 the pattern follows.
+
+## outputs: no command of its own; Reset is a button
+
+*2026-10-09 · accepted*
+
+**Issue:** `/outputs` opened what `/session-monitor outputs` opens, and its other job, `/outputs
+reset`, was out of reach from the pane where the record is read.
+
+**Decision:** `/outputs` is gone, and the summary it printed with it. The Outputs tab's toolbar has
+**Reset**, which asks once more — **Confirm reset** or **Cancel** — before clearing the record.
+
+**Rejected:** keeping `/outputs` as an alias — a command per tab is what the single pane replaced.
+A one-press Reset — a button with a hotkey sits one stray key from wiping the session's record.
 
 ## Installed through `CLAUDE_CODE_PLUGIN_DIRS`
 
