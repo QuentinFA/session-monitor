@@ -1,0 +1,7 @@
+{
+  "name": "session-monitor",
+  "version": "0.1.0",
+  "description": "Panes that follow a Claude Code session: what it used and produced, across every repo it touched",
+  "author": { "name": "QuentinFA" },
+  "types": "./types/index.d.ts"
+}
