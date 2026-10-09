@@ -82,7 +82,7 @@ const describeTool = (tool: string, input: Record<string, unknown>) => {
   return subject ? `${tool}: ${subject.split('\n')[0]?.slice(0, 60)}` : tool
 }
 
-const KIND_WIDTH = 10
+const KIND_WIDTH = 14 // 'deleted branch'
 const SHOWN_ACTIVITY = 4
 
 /** A path inside `dir` as a relative one. */
@@ -180,7 +180,8 @@ async function drawState($: $, e: RenderInput<'Pane'>) {
       {asked && (
         <Box key="asked" marginTop={1}>
           <Text wrap="truncate-end">
-            <Text bold>You asked </Text>“{asked}”<Text dimColor> — {askedStatus}</Text>
+            <Text bold>You asked </Text>
+            <Text dimColor>({askedStatus}) </Text>“{asked}”
           </Text>
         </Box>
       )}
@@ -190,12 +191,20 @@ async function drawState($: $, e: RenderInput<'Pane'>) {
           <Text bold>Last activity</Text>
           {trail.map((a, i) => (
             <Box key={`act:${i}`}>
-              <Text dimColor>{'  '}{a.kind.padEnd(KIND_WIDTH)}</Text>
-              <Text wrap="truncate-end">{within(a.label, a.dir)}</Text>
-              <Box flexGrow={1} />
+              <Box width={KIND_WIDTH + 2} flexShrink={0}>
+                <Text dimColor>
+                  {'  '}
+                  {a.kind}
+                </Text>
+              </Box>
+              <Box flexGrow={1} flexShrink={1} minWidth={0}>
+                <Text wrap="truncate-end">{within(a.label, a.dir).split('\n')[0]}</Text>
+              </Box>
               <Box flexShrink={0}>
                 <Text dimColor>
-                  {a.dir && a.dir !== pos?.dir && !pos?.dir?.startsWith(`${a.dir}/`) ? ` ${base(a.dir)}` : ''} {ago(a.at, at)}
+                  {a.dir && a.dir !== pos?.dir && !pos?.dir?.startsWith(`${a.dir}/`) ? `  ${base(a.dir)}` : ''}
+                  {'  '}
+                  {ago(a.at, at)}
                 </Text>
               </Box>
             </Box>

@@ -221,8 +221,29 @@ describe('where the person left off', () => {
     await turn($, 'All green.', { prompt: 'Run some tests to see how it behaves\nand report' })
     const ui = await openState($)
 
-    expect(await ui.find({ text: /You asked “Run some tests to see how it behaves” — answered/ })).toBeDefined()
+    expect(await ui.find({ text: /You asked \(answered\) “Run some tests to see how it behaves”/ })).toBeDefined()
   })
+
+  for (const surface of ['terminal', 'desktop'] as const) {
+    test(`keeps a long activity line readable in a narrow pane (${surface})`, async ($, on) => {
+      world(on, {})
+      await $.prompt.submit({ text: 'go', wait: false, origin: { kind: 'composer' } })
+      await $.tool.call({
+        tool: 'Bash',
+        command: 'npm run build -- --mode production --sourcemap --outDir dist/a-rather-long-directory-name-here',
+      })
+      const ui = await $.ui.mount({ ...PANE, surface, props: { ...PANE.props, bodyColumns: 40 } })
+      await $.command.run({
+        command: 'session-monitor',
+        args: 'state',
+        origin: { kind: 'composer' },
+        presentation: { isFullscreen: false, columns: 40 },
+      })
+
+      expect(await ui.find({ text: /^npm run build/ })).toBeDefined()
+      expect(await ui.find({ text: /^\s+\d+s$/ })).toBeDefined()
+    })
+  }
 
   test('shows the last activity in order, without the commands that only look', async ($, on) => {
     world(on, { status: '## main...origin/main\n' })
@@ -233,7 +254,7 @@ describe('where the person left off', () => {
     await $.tool.call({ tool: 'Bash', command: 'git status 2>&1 >/dev/null; cat > notes.md' })
     const ui = await openState($)
 
-    const kinds = (await ui.findAll({ text: /^\s+(?:edited|ran)\s*$/ })).map(r => r.text.trim())
+    const kinds = (await ui.findAll({ type: 'Text', text: /^\s+(?:edited|ran)$/ })).map(r => r.text.trim())
     expect(kinds).toEqual(['edited', 'ran', 'ran'])
     expect(await ui.find({ text: 'cat > notes.md' })).toBeDefined()
     expect(await ui.find({ text: 'src/a.ts' })).toBeDefined()
