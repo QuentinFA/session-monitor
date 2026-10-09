@@ -4,11 +4,13 @@ A Claude Code plugin of function hooks: one module, `hooks/register.tsx`, compos
 file under `src/`. Every part draws in one pane, on its own tab: `hooks/register.tsx` draws the tab
 row, and each part's render hook answers on its tab and passes on the others.
 
-- **Before changing a part, read `DECISIONS.md`.** If the issue you are about to act on is already
-  there, follow the recorded decision rather than deciding it again. Reopen an entry only with
-  evidence it didn't have, and say what that evidence is.
-- **Once an issue is settled, add an entry** — Issue, Decision, Rejected, Consequences — naming the
-  part it concerns, including when the answer is "leave it as is". Supersede, don't delete.
+- **Before changing a part, read the ADRs that concern it** — `docs/adr/README.md` indexes them.
+  The Status line is the authority: follow every `amended by` and `superseded by`. If the issue you
+  are about to act on is already decided, follow the decision rather than deciding it again; change
+  it only with evidence the ADR didn't have, by a new ADR that amends or supersedes it.
+- **Once an issue is settled, write an ADR** from `docs/adr/template.md`, including when the answer
+  is "leave it as is", and add its index row. Accepted ADRs are not rewritten. Run
+  `python3 scripts/check-adrs.py` before committing.
 - **Run `claude plugin validate .` and `claude plugin test .` before committing.** A behaviour
   fixed or added gets a test; the tests stand in for the engine, so they need no repository.
 - What the validator refuses, and how to stay inside it:

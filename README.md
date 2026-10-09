@@ -70,7 +70,11 @@ tests/<part>.test.ts         tests, run against stand-ins for the engine
 ```bash
 claude plugin validate .
 claude plugin test .
+python3 scripts/check-adrs.py
 ```
+
+Decisions are recorded as ADRs in [`docs/adr/`](docs/adr/README.md), including behaviour that looks
+like a bug but is intentional.
 
 The tests stand in for the engine — the working directory, the file system, git, and the Bash tool's
 results — so they run without a repository or a network. The engine writes the API's type

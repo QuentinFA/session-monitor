@@ -33,11 +33,11 @@ name the parts in the body.
 | `feat` | a new part, or new behaviour in one |
 | `fix` | behaviour that was wrong: something misrecorded, misfiled or misdrawn |
 | `refactor` | restructuring with no change in behaviour |
-| `docs` | README or `DECISIONS.md` only |
+| `docs` | README or ADRs only |
 | `test` | tests only |
 | `build` | `install.sh`, the manifest, `tsconfig.json` |
 
-A fix or feature carries its test and its `DECISIONS.md` entry in the same commit.
+A fix or feature carries its test, and its ADR when it settles a decision, in the same commit.
 
 ## Description
 
