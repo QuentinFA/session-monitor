@@ -2,7 +2,7 @@
 export const MONITOR = 'session-monitor'
 export const MONITOR_TITLE = 'Session monitor'
 
-export const TAB_IDS = ['outputs'] as const
+export const TAB_IDS = ['outputs', 'state'] as const
 export type TabId = (typeof TAB_IDS)[number]
 
 /**

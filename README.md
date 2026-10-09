@@ -9,8 +9,8 @@ pane has the keyboard. `/session-monitor <tab>` opens it on that tab.
 | Part | Tab | Status |
 | --- | --- | --- |
 | **outputs** | everything the session used and produced, by directory and across repos | done |
-| **state** | recently done, needs your input, next and queued; branch, PR and checks always current | planned |
-| **notes** | notes for later, written by you or by the model on request, kept for `reflect` | planned |
+| **state** | where the session stands: branch, tree, PR and checks; whether Claude works or waits; what needs you; the last turns | done |
+| **notes** | the work the model defers, made visible — set aside: it must show what the model already records, not add a tracker | rethinking |
 | **analysis** | what went wrong and what you corrected, kept for `reflect` | planned |
 
 ## outputs
@@ -41,6 +41,19 @@ summary line until opened:
 
 **Expand all / Collapse all** opens every fold. **Copy all** puts the whole record on the clipboard
 as markdown. **Reset** clears it, after a confirmation.
+
+## state
+
+`/session-monitor state` opens it. Everything on it is read, never asked of the model:
+
+- **Position** — the working directory's branch, upstream and ahead/behind, the tree's staged,
+  modified and untracked counts, and the branch's pull request: state, review, mergeability, checks
+- **Now** — Claude working, for how long and on which tool, or waiting on you
+- **Needs you** — a question Claude is asking, a last answer ending on a question, failing checks,
+  requested changes, merge conflicts, blocked calls
+- **Recently done** — the last turns, each by the first line of Claude's answer
+
+It refreshes when a turn ends, after `git` and `gh` commands, every minute, and on **Refresh**.
 
 ## Install
 
