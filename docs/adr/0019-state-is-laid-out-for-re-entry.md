@@ -1,6 +1,6 @@
 # 0019. State is laid out for re-entry: exceptions first, the last activity as the cue
 
-- Status: accepted
+- Status: accepted, amended by 0020
 - Amends: 0018, § "Decision"
 - Date: 2026-10-09
 - References: research below
@@ -26,6 +26,8 @@ What the research says a returning person needs:
   left to drill-down, readable in about five seconds (dashboard design guides).
 
 ## Decision
+
+> **Amended by [ADR 0020](0020-needs-you-lists-only-what-asks-for-a-decision.md):** blocked calls are not listed under Needs you; they stay in Outputs.
 
 From the top:
 

@@ -117,6 +117,11 @@ async function drawState($: $, e: RenderInput<'Pane'>) {
   const out = await read($, outputs)
   const at = await $.clock.now()
   const last = history.at(-1)
+  if (!isTimerStarted) {
+    // Drawn before any event since a load: read the position right after this drawing, which may not
+    // write state itself.
+    $.clock.after(0, () => startTimer($))
+  }
 
   // The state label leads: what the session is doing, and for how long.
   const label = !current
@@ -138,8 +143,6 @@ async function drawState($: $, e: RenderInput<'Pane'>) {
   if (pr?.mergeable === 'CONFLICTING') needs.push({ text: `#${pr.number} has merge conflicts`, color: 'red' })
   if (pr?.reviewDecision === 'CHANGES_REQUESTED') needs.push({ text: `#${pr.number}: changes requested`, color: 'yellow' })
   if (pos?.behind) needs.push({ text: `${pos.behind} behind ${pos.upstream ?? 'upstream'}`, color: 'yellow' })
-  const blocked = out.blocked?.length ?? 0
-  if (blocked) needs.push({ text: `${blocked} blocked call${blocked === 1 ? '' : 's'} → Outputs`, color: 'yellow' })
 
   const asked = last?.prompt
   const askedStatus = !last ? '' : !last.endedAt ? 'in progress' : (last.reason ?? 'answered')

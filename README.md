@@ -52,7 +52,7 @@ Waiting on you · 3m                     main · clean · no PR · 12s ↻
 
 Needs you
   • Claude asked: Should I keep the old command as an alias?
-  • 2 blocked calls → Outputs
+  • #12: 1 check failing — test
 
 You asked "Run some tests to see how it behaves" — answered
 
@@ -62,7 +62,7 @@ Last activity
   committed 77f1ce1 state (feat): add the State tab          3m
 ```
 
-Needs you appears only when something needs you; Running, when a background command is still going.
+Needs you appears only when something asks you for a decision; Running, when a background command is still going.
 It refreshes when a turn ends, after `git` and `gh` commands, every minute, and on ↻. The reasoning
 and the research behind it are in [ADR 0019](docs/adr/0019-state-is-laid-out-for-re-entry.md).
 

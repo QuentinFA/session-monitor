@@ -101,8 +101,9 @@ The Status column mirrors each ADR's Status line.
 | [0015](0015-blocked-folds-like-every-section.md) | Blocked folds like every other section | accepted |
 | [0016](0016-what-the-record-cannot-know-it-says.md) | What the record cannot know, it says it cannot know | accepted |
 | [0017](0017-what-every-part-reads-is-set-at-session-start.md) | What every part reads is set when the session starts | accepted |
-| [0018](0018-state-shows-what-exists-and-guesses-nothing.md) | State shows what already exists, and guesses nothing | accepted, amended by 0019 |
-| [0019](0019-state-is-laid-out-for-re-entry.md) | State is laid out for re-entry: exceptions first, the last activity as the cue | accepted |
+| [0018](0018-state-shows-what-exists-and-guesses-nothing.md) | State shows what already exists, and guesses nothing | accepted, amended by 0019, 0020 |
+| [0019](0019-state-is-laid-out-for-re-entry.md) | State is laid out for re-entry: exceptions first, the last activity as the cue | accepted, amended by 0020 |
+| [0020](0020-needs-you-lists-only-what-asks-for-a-decision.md) | Needs you lists only what asks for a decision, and position is read on first draw | accepted |
 
 ## Why it works this way
 

@@ -144,6 +144,17 @@ describe('the header line', () => {
   })
 })
 
+describe('after a load', () => {
+  test('reads the position as soon as the tab is drawn, before any event', async ($, on) => {
+    const clock = world(on, { status: '## feat/y...origin/feat/y\n' })
+    const ui = await openState($)
+    expect(await ui.find({ text: /not read yet/ })).toBeDefined()
+
+    await clock.advance(1)
+    expect(await ui.find({ text: /feat\/y · clean · no PR/ })).toBeDefined()
+  })
+})
+
 describe('needs you', () => {
   test('lists each problem with what it asks of the person, and stays away when there is none', async ($, on) => {
     const w: World = { status: '## main...origin/main\n' }
@@ -160,6 +171,16 @@ describe('needs you', () => {
     expect(await ui.find({ text: /#12 has merge conflicts/ })).toBeDefined()
     expect(await ui.find({ text: /#12: changes requested/ })).toBeDefined()
     expect(await ui.find({ text: /3 behind origin\/feat\/x/ })).toBeDefined()
+  })
+
+  test('does not list blocked calls: they happened, nothing is asked', async ($, on) => {
+    world(on, {})
+    on('tool.call', { tool: 'Write' }, () => ({ deny: 'not here' }))
+    await $.tool.call({ tool: 'Write', file_path: '/work/app/x', content: 'y' })
+    const ui = await openState($)
+
+    expect(await ui.find({ text: /blocked/ })).toBeUndefined()
+    expect(await ui.find({ text: 'Needs you' })).toBeUndefined()
   })
 
   test('quotes the question the last answer ended on, until the next prompt', async ($, on) => {

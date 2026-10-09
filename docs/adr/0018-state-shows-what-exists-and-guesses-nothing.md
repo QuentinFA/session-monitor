@@ -1,6 +1,6 @@
 # 0018. State shows what already exists, and guesses nothing
 
-- Status: accepted, amended by 0019
+- Status: accepted, amended by 0019, 0020
 - Date: 2026-10-09
 
 ## Context
@@ -37,6 +37,8 @@ It refreshes when a main-loop turn ends, after a Bash command running `git` or `
 seconds, and on its Refresh button — never while drawing.
 
 ## Consequences
+
+> **Amended by [ADR 0020](0020-needs-you-lists-only-what-asks-for-a-decision.md):** the position is read when the tab is first drawn after a load, not only on the first event.
 
 - "Ends on a question" is a heuristic on the answer's last line: a rhetorical question shows as one,
   and a question asked mid-answer does not. The item quotes the line so the person can judge it.
