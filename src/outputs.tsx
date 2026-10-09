@@ -317,6 +317,7 @@ const counts = (place: Place) =>
 
 /** Every key a fold can open, for Expand all. */
 const allKeys = (out: Outputs) => [
+  'b:blocked',
   'u:services',
   ...out.places.flatMap(p => [
     `p:${p.root}`,
@@ -868,10 +869,16 @@ async function drawOutputs($: $, e: RenderInput<'Pane'>) {
       </Box>
       {blocked.length > 0 && (
         <Box key="blocked" flexDirection="column" marginBottom={1}>
-          <Text bold color="red">
-            Blocked
-          </Text>
-          {blocked.map(b => (
+          <Box>
+            <Button key="b:blocked" plain label={isOpen('b:blocked') ? '▾' : '▸'} onPress={toggle('b:blocked')} />
+            <Text bold color="red">
+              {' '}
+              Blocked{' '}
+            </Text>
+            <Text color="red">{blocked.length}</Text>
+          </Box>
+          {isOpen('b:blocked') &&
+            blocked.map(b => (
             <Box key={`blocked:${b.id}`} flexDirection="column">
               <Text color="red" wrap="truncate-end">
                 {'  ✗ '}
@@ -883,7 +890,7 @@ async function drawOutputs($: $, e: RenderInput<'Pane'>) {
                 {b.dir ? ` · ${short(b.dir)}` : ''}
               </Text>
             </Box>
-          ))}
+            ))}
         </Box>
       )}
       {section('GitHub', out.github)}

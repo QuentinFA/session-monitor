@@ -356,7 +356,7 @@ describe('blocked calls', () => {
     expect(recorded().places[0]?.commands).toEqual([{ command: 'false', isError: true }])
   })
 
-  test('draws Blocked first, in red, and puts it in the report', async ($, on) => {
+  test('draws Blocked first, folded like every section, and puts it in the report', async ($, on) => {
     host(on, [{ root: '/work/app', head: 'a1' }], () => ({ deny: 'not here' }))
     let copied = ''
     on('ui.copy', (_$, e) => {
@@ -380,7 +380,10 @@ describe('blocked calls', () => {
         view: {},
       },
     })
-    expect(await ui.find({ text: 'Blocked' })).toBeDefined()
+    expect(await ui.find({ text: /Blocked/ })).toBeDefined()
+    expect(await ui.find({ text: /✗ Bash rm -rf build/ })).toBeUndefined()
+
+    await ui.press({ key: 'b:blocked' })
     expect(await ui.find({ text: /✗ Bash rm -rf build/ })).toBeDefined()
 
     await ui.press({ key: 'copy' })

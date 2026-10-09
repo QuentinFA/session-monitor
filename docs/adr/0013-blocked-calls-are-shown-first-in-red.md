@@ -1,6 +1,6 @@
 # 0013. Blocked calls are shown first, in red
 
-- Status: accepted
+- Status: accepted, amended by 0015
 - Date: 2026-10-09
 
 ## Context
@@ -10,6 +10,8 @@ left no trace: the recorders returned on a refusal, so a blocked `git push --for
 nothing happened.
 
 ## Decision
+
+> **Amended by [ADR 0015](0015-blocked-folds-like-every-section.md):** Blocked folds like every other section, collapsed by default.
 
 A refused call is recorded under **Blocked**, at the top of the tab in red, with its tool, what it
 would have touched, the reason and its directory; a refused command or read is also marked red in

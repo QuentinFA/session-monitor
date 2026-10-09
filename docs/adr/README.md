@@ -96,8 +96,9 @@ The Status column mirrors each ADR's Status line.
 | [0010](0010-one-plugin-with-parts-in-its-own-repository.md) | One plugin with parts, in its own repository | accepted, amended by 0012 |
 | [0011](0011-installed-through-claude-code-plugin-dirs.md) | The plugin is installed through CLAUDE_CODE_PLUGIN_DIRS | accepted |
 | [0012](0012-one-pane-with-a-tab-per-part.md) | One pane with a tab per part | accepted, amended by 0014 |
-| [0013](0013-blocked-calls-are-shown-first-in-red.md) | Blocked calls are shown first, in red | accepted |
+| [0013](0013-blocked-calls-are-shown-first-in-red.md) | Blocked calls are shown first, in red | accepted, amended by 0015 |
 | [0014](0014-outputs-has-no-command-reset-is-a-button.md) | Outputs has no command of its own; Reset is a button | accepted |
+| [0015](0015-blocked-folds-like-every-section.md) | Blocked folds like every other section | accepted |
 
 ## Why it works this way
 
