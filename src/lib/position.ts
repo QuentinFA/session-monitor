@@ -72,13 +72,15 @@ export function parsePr(json: string): Position['pr'] {
   }
 }
 
-/** The answer's last line when it ends on a question; the first line as its summary. */
+/** The question an answer ends on — its last sentence, when that sentence asks — and its first line. */
 export function readAnswer(text: string) {
   const lines = text
     .split('\n')
     .map(l => l.replace(/^[#>*\-\s]+|[*_`]+/g, '').trim())
     .filter(Boolean)
   const last = lines.at(-1) ?? ''
+  const sentences = last.match(/[^.!?]+[.!?]*/g)?.map(x => x.trim()).filter(Boolean) ?? []
+  const closing = sentences.at(-1) ?? ''
 
-  return { summary: lines[0]?.slice(0, 160), question: last.endsWith('?') ? last.slice(0, 200) : undefined }
+  return { summary: lines[0]?.slice(0, 160), question: closing.endsWith('?') ? closing.slice(0, 300) : undefined }
 }

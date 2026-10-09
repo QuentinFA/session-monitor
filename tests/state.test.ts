@@ -198,6 +198,14 @@ describe('needs you', () => {
     expect(await ui.find({ text: 'Needs you' })).toBeUndefined()
   })
 
+  test('quotes only the closing question of a long last paragraph', async ($, on) => {
+    world(on, {})
+    await turn($, 'Done.\n\nWhen this turn ends the header should change, and the trail should fill. Does it read cleanly at your width?')
+    const ui = await openState($)
+
+    expect(await ui.find({ text: /^\s+• Claude asked: Does it read cleanly at your width\?$/ })).toBeDefined()
+  })
+
   test('quotes the question the last answer ended on, until the next prompt', async ($, on) => {
     world(on, {})
     await turn($, 'I can do either.\n\nShould I keep the old command as an alias?')
@@ -260,6 +268,24 @@ describe('where the person left off', () => {
     })
   }
 
+  test('does not take a task notification for the person’s request', async ($, on) => {
+    world(on, {})
+    await turn($, 'Done.', { prompt: 'Build the tab' })
+    await $.prompt.submit({ text: '<task-notification>done</task-notification>', wait: false, origin: { kind: 'task-notification' } })
+    const ui = await openState($)
+
+    expect(await ui.find({ text: /You asked \(answered\) “Build the tab”/ })).toBeDefined()
+  })
+
+  test('shows commands without their plumbing, and commits by subject', async ($, on) => {
+    world(on, {})
+    await $.prompt.submit({ text: 'go', wait: false, origin: { kind: 'composer' } })
+    await $.tool.call({ tool: 'Bash', command: 'claude plugin test . 2>&1 | grep -v "^(pass)" | tail -5' })
+    const ui = await openState($)
+
+    expect(await ui.find({ type: 'Text', text: 'claude plugin test .' })).toBeDefined()
+  })
+
   test('shows the last activity in order, without the commands that only look', async ($, on) => {
     world(on, { status: '## main...origin/main\n' })
     await $.prompt.submit({ text: 'go', wait: false, origin: { kind: 'composer' } })
@@ -269,8 +295,8 @@ describe('where the person left off', () => {
     await $.tool.call({ tool: 'Bash', command: 'git status 2>&1 >/dev/null; cat > notes.md' })
     const ui = await openState($)
 
-    const kinds = (await ui.findAll({ type: 'Text', text: /^\s+(?:edited|ran)$/ })).map(r => r.text.trim())
-    expect(kinds).toEqual(['edited', 'ran', 'ran'])
+    const kinds = (await ui.findAll({ type: 'Text', text: /^\s+(?:edit|ran)$/ })).map(r => r.text.trim())
+    expect(kinds).toEqual(['edit', 'ran', 'ran'])
     expect(await ui.find({ text: 'cat > notes.md' })).toBeDefined()
     expect(await ui.find({ text: 'src/a.ts' })).toBeDefined()
     expect(await ui.find({ text: 'npm test' })).toBeDefined()

@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, RenderInput } from 'claude-code'
 
-import type { Now, Outputs, Position, Turn } from '../types'
+import type { Activity, Now, Outputs, Position, Turn } from '../types'
 import { MONITOR } from './lib/pane'
 import { parsePr, parseStatus, readAnswer } from './lib/position'
 
@@ -82,8 +82,27 @@ const describeTool = (tool: string, input: Record<string, unknown>) => {
   return subject ? `${tool}: ${subject.split('\n')[0]?.slice(0, 40)}` : tool
 }
 
-const KIND_WIDTH = 14 // 'deleted branch'
+/** How each kind of activity is named in the trail: short, so the label keeps the width. */
+const KIND_NAME: Record<Activity['kind'], string> = {
+  edited: 'edit',
+  created: 'new',
+  ran: 'ran',
+  committed: 'commit',
+  pushed: 'push',
+  branched: 'branch',
+  'deleted branch': '-branch',
+  github: 'gh',
+}
+const KIND_WIDTH = 7
 const SHOWN_ACTIVITY = 4
+
+/** A command without its plumbing: up to its first pipe, without `2>&1` and `>/dev/null`; a redirect to a file stays. */
+const commandGist = (command: string) =>
+  command
+    .split('\n')[0]!
+    .split(/\s\|\s?/)[0]!
+    .replace(/\s+(?:\d?>&\d|\d?>>?\s*\/dev\/null)/g, '')
+    .trim()
 
 /** A path inside `dir` as a relative one. */
 const within = (label: string, dir?: string) => (dir && label.startsWith(`${dir}/`) ? label.slice(dir.length + 1) : label)
@@ -144,8 +163,9 @@ async function drawState($: $, e: RenderInput<'Pane'>) {
   if (pr?.reviewDecision === 'CHANGES_REQUESTED') needs.push({ text: `#${pr.number}: changes requested`, color: 'yellow' })
   if (pos?.behind) needs.push({ text: `${pos.behind} behind ${pos.upstream ?? 'upstream'}`, color: 'yellow' })
 
-  const asked = last?.prompt
-  const askedStatus = !last ? '' : !last.endedAt ? 'in progress' : (last.reason ?? 'answered')
+  const theirs = [...history].reverse().find(t => t.prompt)
+  const asked = theirs?.prompt
+  const askedStatus = !theirs ? '' : !theirs.endedAt ? 'in progress' : (theirs.reason ?? 'answered')
   const trail = (out.activity ?? []).slice(-SHOWN_ACTIVITY)
   const running = out.scheduled.filter(a => a.taskId && !a.isDone)
 
@@ -173,7 +193,7 @@ async function drawState($: $, e: RenderInput<'Pane'>) {
         <Box key="needs" flexDirection="column" marginTop={1}>
           <Text bold>Needs you</Text>
           {needs.map((n, i) => (
-            <Text key={`need:${i}`} color={n.color} wrap="truncate-end">
+            <Text key={`need:${i}`} color={n.color} wrap="wrap">
               {'  • '}
               {n.text}
             </Text>
@@ -183,7 +203,7 @@ async function drawState($: $, e: RenderInput<'Pane'>) {
 
       {asked && (
         <Box key="asked" marginTop={1}>
-          <Text wrap="truncate-end">
+          <Text wrap="wrap">
             <Text bold>You asked </Text>
             <Text dimColor>({askedStatus}) </Text>“{asked}”
           </Text>
@@ -198,11 +218,18 @@ async function drawState($: $, e: RenderInput<'Pane'>) {
               <Box width={KIND_WIDTH + 2} flexShrink={0}>
                 <Text dimColor>
                   {'  '}
-                  {a.kind}
+                  {KIND_NAME[a.kind]}
                 </Text>
               </Box>
               <Box flexGrow={1} flexShrink={1} minWidth={0}>
-                <Text wrap="truncate-end">{within(a.label, a.dir).split('\n')[0]}</Text>
+                {a.kind === 'committed' ? (
+                  <Text wrap="truncate-end">
+                    {a.label.replace(/^\S+\s/, '')}
+                    <Text dimColor> {a.label.split(' ')[0]}</Text>
+                  </Text>
+                ) : (
+                  <Text wrap="truncate-end">{a.kind === 'ran' ? commandGist(a.label) : within(a.label, a.dir)}</Text>
+                )}
               </Box>
               <Box flexShrink={0}>
                 <Text dimColor>
@@ -236,7 +263,10 @@ export const registerState: Register = on => {
     startTimer($)
     const at = await $.clock.now()
     await update($, now, () => ({ isWorking: true, since: at }))
-    const prompt = e.text.trim().split('\n')[0]?.slice(0, 160)
+    // Only what the person typed is their request: a task's notice or another session's message
+    // also starts a turn, but asks nothing in the person's words.
+    const isPersons = e.origin.kind === 'composer' || e.origin.kind === 'bridge'
+    const prompt = isPersons ? e.text.trim().split('\n')[0]?.slice(0, 300) : undefined
     await update($, turns, list => [...list, { startedAt: at, prompt }].slice(-KEPT_TURNS))
 
     return next(e)
