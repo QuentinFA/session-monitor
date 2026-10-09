@@ -3,7 +3,10 @@
 A Claude Code plugin of panes that follow a session as it runs — no skill to invoke, no model turn
 spent: it records from the session's own events and is always there.
 
-| Part | Pane | Status |
+`/session-monitor` opens one pane with a tab per part — click a tab, or press its digit while the
+pane has the keyboard. `/session-monitor <tab>` opens it on that tab.
+
+| Part | Tab | Status |
 | --- | --- | --- |
 | **outputs** | everything the session used and produced, by directory and across repos | done |
 | **state** | recently done, needs your input, next and queued; branch, PR and checks always current | planned |
@@ -12,12 +15,15 @@ spent: it records from the session's own events and is always there.
 
 ## outputs
 
-`/outputs` opens the pane and prints a short summary. `/outputs reset` clears the record. The status
-line keeps a one-line count: `3 dirs · +120 −30 · 2 commits`.
+`/outputs` opens the monitor on this tab and prints a short summary. `/outputs reset` clears the
+record. The status line keeps a one-line count: `3 dirs · +120 −30 · 2 commits · 1 blocked`.
 
 ### What it shows
 
-At the top, the outputs that leave the machine or outlive the session:
+At the top, in red, **Blocked**: calls refused before they ran — by a hook, a permission rule or
+check, or you at the prompt — with the reason and where they would have run.
+
+Then the outputs that leave the machine or outlive the session:
 
 - **GitHub** — PRs and issues created, commented on, closed or merged, with their URLs
 - **Services** — MCP calls that wrote something (a draft, an event, a document); read-only calls and
@@ -54,8 +60,9 @@ needs `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`.
 
 ```
 .claude-plugin/plugin.json   manifest
-hooks/register.tsx           the module Claude Code loads: composes the parts
-src/<part>.tsx               one part each
+hooks/register.tsx           the module Claude Code loads: the pane, its tabs, the commands
+src/<part>.tsx               one part each: its hooks and its tab's body
+src/lib/                     what the parts share
 types/index.d.ts             the state each part keeps, declared for the engine
 tests/<part>.test.ts         tests, run against stand-ins for the engine
 ```

@@ -26,6 +26,8 @@ type BashOutcome = {
   extra?: Record<string, unknown>
   isError?: boolean
   text?: string
+  /** Refuse the call, as a hook or a permission rule does. */
+  deny?: string
   /** What the command does to the repos while it runs. */
   effect?: () => void
 }
@@ -54,6 +56,9 @@ function host(on: On, repos: Repo[], bash: (command: string) => BashOutcome = ()
   on('process.run', (_$, e) => ({ value: git(e.argv, e.init?.cwd ?? cwd) }))
   on('tool.call', { tool: 'Bash' }, (_$, e) => {
     const outcome = bash(e.command)
+    if (outcome.deny !== undefined) {
+      return { deny: outcome.deny }
+    }
     outcome.effect?.()
     const result = {
       stdout: outcome.stdout ?? '',
@@ -295,6 +300,84 @@ describe('the rest of the session', () => {
   })
 })
 
+describe('blocked calls', () => {
+  test('records a command a hook refused, in red in its directory and in Blocked', async ($, on) => {
+    const recorded = host(on, [{ root: '/work/app', head: 'a1' }], () => ({ deny: 'force-push is not allowed' }))
+    await $.tool.call({ tool: 'Bash', command: 'git push --force' })
+
+    const out = recorded()
+    expect(out.blocked).toMatchObject([
+      { tool: 'Bash', target: 'git push --force', reason: 'force-push is not allowed', dir: '/work/app' },
+    ])
+    expect(out.places[0]?.commands).toEqual([{ command: 'git push --force', isBlocked: true }])
+  })
+
+  test('records a write the person declined at the permission prompt', async ($, on) => {
+    const recorded = host(on, [{ root: '/work/app', head: 'a1' }])
+    on('tool.call', { tool: 'Write' }, () => ({
+      result: undefined as never,
+      isError: true as const,
+      text: "The user doesn't want to proceed with this tool use. The tool use was rejected.",
+    }))
+    await $.tool.call({ tool: 'Write', file_path: '/work/app/.env', content: 'x' })
+
+    expect(recorded().blocked).toMatchObject([
+      { tool: 'Write', target: '/work/app/.env', reason: 'declined at the permission prompt', dir: '/work/app' },
+    ])
+  })
+
+  test('keeps a refusal reported twice once', async ($, on) => {
+    const recorded = host(on, [])
+    on('classic.PermissionDenied', () => ({}))
+    const denied = { tool_name: 'Edit', tool_input: { file_path: '/tmp/x' }, tool_use_id: 'call-1', reason: 'auto mode refused it' }
+    await $.classic.PermissionDenied(denied)
+    await $.classic.PermissionDenied(denied)
+
+    expect(recorded().blocked).toMatchObject([
+      { id: 'call-1', tool: 'Edit', target: '/private/tmp/x', reason: 'auto mode refused it' },
+    ])
+  })
+
+  test('does not count an ordinary failure as blocked', async ($, on) => {
+    const recorded = host(on, [{ root: '/work/app', head: 'a1' }], () => ({ isError: true, text: 'exit code 1' }))
+    await $.tool.call({ tool: 'Bash', command: 'false' })
+
+    expect(recorded().blocked ?? []).toEqual([])
+    expect(recorded().places[0]?.commands).toEqual([{ command: 'false', isError: true }])
+  })
+
+  test('draws Blocked first, in red, and puts it in the report', async ($, on) => {
+    host(on, [{ root: '/work/app', head: 'a1' }], () => ({ deny: 'not here' }))
+    let copied = ''
+    on('ui.copy', (_$, e) => {
+      copied = e.text
+
+      return { value: { isCopied: true as const } }
+    })
+    await $.tool.call({ tool: 'Bash', command: 'rm -rf build' })
+
+    const ui = await $.ui.mount({
+      plugin: 'session-monitor',
+      surface: 'terminal',
+      component: 'Pane',
+      requestId: 'session-monitor',
+      props: {
+        title: 'Session monitor',
+        isFocused: true,
+        bodyColumns: 80,
+        placement: 'dock',
+        scroll: { offset: 0, bodyRows: 40 },
+        view: {},
+      },
+    })
+    expect(await ui.find({ text: 'Blocked' })).toBeDefined()
+    expect(await ui.find({ text: /✗ Bash rm -rf build/ })).toBeDefined()
+
+    await ui.press({ key: 'copy' })
+    expect(copied).toContain('## Blocked\n- Bash `rm -rf build` — not here (/work/app)')
+  })
+})
+
 describe('the pane', () => {
   for (const surface of ['terminal', 'desktop'] as const) {
     test(`starts collapsed, expands all, and copies the report (${surface})`, async ($, on) => {
@@ -311,9 +394,9 @@ describe('the pane', () => {
         plugin: 'session-monitor',
         surface,
         component: 'Pane',
-        requestId: 'outputs',
+        requestId: 'session-monitor',
         props: {
-          title: 'Outputs',
+          title: 'Session monitor',
           isFocused: true,
           bodyColumns: 80,
           placement: 'dock',
@@ -334,3 +417,71 @@ describe('the pane', () => {
     })
   }
 })
+
+describe('the monitor', () => {
+  /** A slash command as the person types it at the prompt. */
+  const typed = (command: string, args = '') => ({
+    command,
+    args,
+    origin: { kind: 'composer' as const },
+    presentation: { isFullscreen: false, columns: 120 },
+  })
+  const PANE_PROPS = {
+    title: 'Session monitor',
+    isFocused: true,
+    bodyColumns: 80,
+    placement: 'dock' as const,
+    scroll: { offset: 0, bodyRows: 40 },
+    view: {},
+  }
+
+  for (const surface of ['terminal', 'desktop'] as const) {
+    test(`draws a tab row with a hotkey per tab, above the active tab (${surface})`, async ($, on) => {
+      host(on, [{ root: '/work/app', head: 'a1' }])
+      await $.tool.call({ tool: 'Bash', command: 'git checkout -b feat/x' })
+
+      const ui = await $.ui.mount({
+        plugin: 'session-monitor',
+        surface,
+        component: 'Pane',
+        requestId: 'session-monitor',
+        props: PANE_PROPS,
+      })
+      expect(await ui.find({ key: 'tab:outputs', text: 'Outputs' })).toBeDefined()
+      expect(await ui.find({ text: /1 branch · 1 command/ })).toBeDefined()
+    })
+  }
+
+  test('opens on a tab named by /session-monitor, and refuses an unknown one', async ($, on) => {
+    host(on, [])
+    const opened: string[] = []
+    on('ui.open', (_$, e) => {
+      opened.push(e.id)
+
+      return { value: { isPlaced: true as const } }
+    })
+
+    expect(await $.command.run(typed('session-monitor', 'outputs'))).toMatchObject({
+      text: 'Session monitor opened on outputs.',
+    })
+    expect(opened).toEqual(['session-monitor'])
+    expect(await $.command.run(typed('session-monitor', 'nope'))).toMatchObject({
+      text: 'No tab "nope". Tabs: outputs.',
+    })
+    expect(opened).toEqual(['session-monitor'])
+  })
+
+  test('/outputs opens the monitor too', async ($, on) => {
+    host(on, [])
+    const opened: string[] = []
+    on('ui.open', (_$, e) => {
+      opened.push(e.id)
+
+      return { value: { isPlaced: true as const } }
+    })
+    await $.command.run(typed('outputs'))
+
+    expect(opened).toEqual(['session-monitor'])
+  })
+})
+

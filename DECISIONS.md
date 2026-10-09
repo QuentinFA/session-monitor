@@ -9,7 +9,7 @@ or none when they concern the whole plugin.
 
 ## Its own repository, one plugin with parts
 
-*2026-10-09 · accepted*
+*2026-10-09 · accepted; "each part with its own pane" superseded by "One pane with a tab per part"*
 
 **Issue:** it began as one mod, `session-outputs`, inside a repository of skills. Three more were
 planned beside it — the session's state, notes for later, and an analysis of what went wrong — all
@@ -25,6 +25,25 @@ the parts are independent enough to test, and to break, separately.
 
 **Consequences:** the link to `reflect` becomes a contract across repositories: this plugin writes
 what `reflect` should read to a known file, and the skill reads it when present.
+
+## One pane with a tab per part
+
+*2026-10-09 · accepted*
+
+**Issue:** with a pane per part, the parts show as the engine's own tabs: mixed with other plugins'
+panes, drawn only while more than one pane is open, and reached through a command per part.
+
+**Decision:** one pane, opened by `/session-monitor [tab]`, with its own tab row — a button per
+part, its digit as hotkey — and the tab on show kept in state. The monitor's render hook draws the
+row and asks the chain for the body; each part's render hook answers on its own tab and passes on
+the others. `/outputs` stays, as a shortcut to its tab. A tab appears once its part exists.
+
+**Rejected:** a pane per part — the layout above, which the plugin does not control. Each part
+exporting a draw function for the monitor to call — the validator follows `$` only into functions
+of the same file, never across an import.
+
+**Consequences:** the plugin's one unmatched `session.start` is in `hooks/register.tsx`, which
+declares every part's commands; a part does its own start-up lazily, on first use.
 
 ## outputs: a mod, not a status line or a skill
 
@@ -151,6 +170,27 @@ call it is observing.
 
 **Decision:** each recorder is caught inside its hook, and each hook is registered with a `.catch`
 that replays the call's result. A failed recording loses that entry, never the tool call.
+
+## outputs: blocked calls are shown first, in red
+
+*2026-10-09 · accepted*
+
+**Issue:** a call refused before it ran — by a hook, a permission rule or check, or the person at
+the prompt — left no trace: the recorders returned on a refusal, so a blocked `git push --force`
+looked like nothing happened.
+
+**Decision:** a refused call is recorded under **Blocked**, at the top of the tab in red, with its
+tool, what it would have touched, the reason and its directory; a refused command is also marked
+red in its directory's list, and the status line counts them. Three routes report a refusal — a
+`deny` result, `classic.PermissionDenied`, and an error result whose text says the person declined
+— and the call's id keeps a refusal reported twice once.
+
+**Rejected:** treating every error as blocked — a command that ran and failed is a failure, shown
+as one, not a refusal.
+
+**Consequences:** a decline at the prompt is recognised by its wording ("doesn't want to proceed",
+"was rejected"), not by a field: if core rewords it, those declines read as ordinary failures until
+the pattern follows.
 
 ## Installed through `CLAUDE_CODE_PLUGIN_DIRS`
 

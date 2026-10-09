@@ -1,8 +1,9 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register, ToolCallInput, ToolCallResult } from 'claude-code'
+import type { EngineInterface, Register, RenderInput, ToolCallInput, ToolCallResult } from 'claude-code'
 
 import type {
   Action,
+  Blocked,
   Command,
   Commit,
   FileChange,
@@ -10,8 +11,9 @@ import type {
   Outputs,
   Place,
 } from '../types'
+import { MONITOR, MONITOR_TITLE } from './lib/pane'
 
-const PANE = 'outputs'
+
 const EMPTY: Outputs = { places: [], github: [], services: [], scheduled: [] }
 const outputs = atom({ plugin: 'session-monitor', key: 'outputs' } as const, EMPTY)
 const expanded = atom({ plugin: 'session-monitor', key: 'expanded' } as const, [])
@@ -28,8 +30,12 @@ const WORKTREE_ADD = /\bgit\s+(?:-C\s+\S+\s+)?worktree\s+add\s+([^;&|]+)/
 const GH_URL = /https:\/\/github\.com\/[^\s)"']+/g
 const MCP_READ = /^(get|list|search|read|query|fetch|download|find|guide|describe|suggest|export|check)/
 const MAX_COMMANDS = 300
+// How core words a call the person declined at the permission prompt: an error result, not a deny.
+const DECLINED = /doesn't want to proceed|tool use was rejected|user (?:rejected|declined|denied)/i
 
 type $ = EngineInterface
+
+const activeTab = atom({ plugin: 'session-monitor', key: 'tab' } as const, 'outputs')
 
 // Module state: caches only, rebuilt after a reload.
 const roots = new Map<string, { root: string; isRepo: boolean }>()
@@ -99,8 +105,17 @@ const expand = (base: string, raw: string) => {
 const shellText = (command: string) =>
   command.replace(/<<-?\s*(['"]?)(\w+)\1[^\n]*\n[\s\S]*?\n\s*\2(?=\n|$)/g, '<<$2')
 
+/** The home directory, read once: `~` in a `cd` and in shown paths. */
+const loadHome = async ($: $) => {
+  if (!home) {
+    const got = await $.process.run(['printenv', 'HOME']).catch(() => undefined)
+    home = got?.stdout.trim() ?? ''
+  }
+}
+
 /** The directory a Bash command ran in: its `cd`s followed in order up to its `git -C`, else the session's. */
 const commandDir = async ($: $, command: string) => {
+  await loadHome($)
   const cwd = await $.session.cwd()
   const text = shellText(command)
   const gitC = /\bgit\s+-C\s+("[^"]+"|'[^']+'|\S+)/.exec(text)
@@ -159,6 +174,7 @@ const snapshot = async ($: $, dir: string): Promise<Snapshot | undefined> => {
 
 /** Applies `fn` to the place for `dir`, creating the place on first touch. */
 const touch = async ($: $, dir: string, fn: (place: Place) => Place) => {
+  await loadHome($)
   const { root, isRepo } = await placeOf($, await canon($, dir))
   const isNew = !(await read($, outputs)).places.some(p => p.root === root)
   const remote = isNew && isRepo ? await remoteOf($, root) : undefined
@@ -236,7 +252,7 @@ const countHunks = (hunks: readonly { lines: readonly string[] }[]) => {
 }
 
 const refreshStatus = async ($: $) => {
-  const { places } = await read($, outputs)
+  const { places, blocked = [] } = await read($, outputs)
   let added = 0
   let removed = 0
   let commits = 0
@@ -247,11 +263,12 @@ const refreshStatus = async ($: $) => {
       removed += file.removed
     }
   }
-  $.ui.status(
-    places.length === 0
-      ? undefined
-      : `${places.length} dir${places.length === 1 ? '' : 's'} · +${added} −${removed} · ${commits} commit${commits === 1 ? '' : 's'}`,
-  )
+  const parts = [
+    places.length > 0 &&
+      `${places.length} dir${places.length === 1 ? '' : 's'} · +${added} −${removed} · ${commits} commit${commits === 1 ? '' : 's'}`,
+    blocked.length > 0 && `${blocked.length} blocked`,
+  ].filter(Boolean)
+  $.ui.status(parts.length === 0 ? undefined : parts.join(' · '))
 }
 
 const commitOf = async ($: $, root: string, sha: string, kind: string, branch?: string) => {
@@ -289,6 +306,7 @@ const counts = (place: Place) =>
     place.changed.length && `${place.changed.length} changed`,
     place.used.length && `${place.used.length} read`,
     place.commands.length && plural(place.commands.length, 'command'),
+    place.commands.some(c => c.isBlocked) && `${place.commands.filter(c => c.isBlocked).length} blocked`,
   ]
     .filter(Boolean)
     .join(' · ')
@@ -312,6 +330,10 @@ function report(out: Outputs) {
   const parts: string[] = ['# Session outputs']
   const made = out.services.filter(a => !a.isUse)
   const used = out.services.filter(a => a.isUse)
+  if (out.blocked?.length) {
+    parts.push('\n## Blocked')
+    for (const b of out.blocked) parts.push(`- ${b.tool} \`${b.target}\` — ${b.reason}${b.dir ? ` (${short(b.dir)})` : ''}`)
+  }
   for (const [title, list] of [
     ['GitHub', out.github],
     ['Services', made],
@@ -351,7 +373,7 @@ function report(out: Outputs) {
       for (const c of place.commands) {
         const [first = '', ...rest] = c.command.split('\n')
         const more = rest.length ? `  # … (+${rest.length} lines)` : ''
-        parts.push(`${first}${c.isBackground ? ' &' : ''}${c.isError ? '  # failed' : ''}${more}`)
+        parts.push(`${first}${c.isBackground ? ' &' : ''}${c.isError ? '  # failed' : ''}${c.isBlocked ? '  # blocked' : ''}${more}`)
       }
       parts.push('```')
     }
@@ -386,6 +408,46 @@ function summary(out: Outputs) {
   return parts.length === 1 ? 'Nothing used or produced yet.' : parts.join('\n')
 }
 
+/** What a refused call would have touched, and where. */
+const blockedTarget = async ($: $, tool: string, input: Record<string, unknown>) => {
+  const path = [input.file_path, input.notebook_path, input.path].find(
+    (value): value is string => typeof value === 'string',
+  )
+  if (tool === 'Bash' && typeof input.command === 'string') {
+    return { target: input.command.split('\n')[0] ?? '', dir: await commandDir($, input.command) }
+  }
+  if (path) {
+    const real = await canon($, path)
+
+    return { target: real, dir: dirname(real) }
+  }
+  if (tool.startsWith('mcp__')) {
+    const [, server = '', name = ''] = tool.split('__')
+
+    return { target: `${server.replace(/^claude_ai_/, '')}: ${name}` }
+  }
+
+  return { target: tool }
+}
+
+/** Records a refused call once, however many routes report it. */
+const recordBlocked = async ($: $, id: string, tool: string, input: Record<string, unknown>, reason: string) => {
+  const { target, dir } = await blockedTarget($, tool, input)
+  const entry: Blocked = { id, tool, target, reason: reason.split('\n')[0]?.slice(0, 200) ?? '', dir }
+  await update($, outputs, out =>
+    (out.blocked ?? []).some(b => b.id === id) ? out : { ...out, blocked: [...(out.blocked ?? []), entry] },
+  )
+  await refreshStatus($)
+}
+
+/** Why a call was refused, or undefined when it ran. */
+const refusal = (ran: ToolCallResult) =>
+  ran.deny !== undefined
+    ? ran.deny
+    : ran.isError && DECLINED.test(ran.text ?? '')
+      ? 'declined at the permission prompt'
+      : undefined
+
 async function recordBash(
   $: $,
   e: Extract<ToolCallInput, { tool: 'Bash' }>,
@@ -393,15 +455,14 @@ async function recordBash(
   dir: string,
   before: Snapshot | undefined,
 ) {
-  if (ran.deny !== undefined) {
-    return
-  }
+  const isBlocked = refusal(ran) !== undefined
   const text = shellText(e.command)
-  const out = ran.isError ? undefined : ran.result
+  const out = ran.deny !== undefined || ran.isError ? undefined : ran.result
   const command: Command = {
     command: e.command,
     description: e.description,
-    isError: ran.isError ? true : undefined,
+    isError: ran.isError && !isBlocked ? true : undefined,
+    isBlocked: isBlocked || undefined,
     isBackground: e.run_in_background || out?.backgroundTaskId ? true : undefined,
   }
   await touch($, dir, place => ({
@@ -409,7 +470,7 @@ async function recordBash(
     commands: [...place.commands, command].slice(-MAX_COMMANDS),
   }))
   if (!out) {
-    if (ran.isError) {
+    if (ran.isError && !isBlocked) {
       await recordGh($, text, ran.text ?? '', dir, undefined, true)
     }
 
@@ -650,6 +711,12 @@ async function recordNotebookEdit($: $, e: Extract<ToolCallInput, { tool: 'Noteb
 }
 
 async function recordOther($: $, e: ToolCallInput, ran: ToolCallResult) {
+  const reason = refusal(ran)
+  if (reason !== undefined) {
+    await recordBlocked($, e.tool_use_id ?? '', e.tool, e as Record<string, unknown>, reason)
+
+    return
+  }
   if (ran.deny !== undefined || ran.isError) {
     return
   }
@@ -678,18 +745,6 @@ async function recordOther($: $, e: ToolCallInput, ran: ToolCallResult) {
 }
 
 export const registerOutputs: Register = on => {
-  on('session.start', async ($, e, next) => {
-    const got = await $.process.run(['printenv', 'HOME']).catch(() => undefined)
-    home = got?.stdout.trim() ?? ''
-    await $.command.register({
-      name: 'outputs',
-      description: 'Show what this session used and produced, by directory',
-    })
-    await refreshStatus($)
-
-    return next(e)
-  })
-
   on('command.run', { command: 'outputs' }, async ($, e) => {
     if (e.args.trim() === 'reset') {
       await update($, outputs, () => EMPTY)
@@ -698,7 +753,8 @@ export const registerOutputs: Register = on => {
 
       return { text: 'Session outputs cleared.' }
     }
-    await $.ui.open({ id: PANE, title: 'Outputs' })
+    await update($, activeTab, () => 'outputs')
+    await $.ui.open({ id: MONITOR, title: MONITOR_TITLE })
 
     return { text: summary(await read($, outputs)) }
   })
@@ -713,6 +769,14 @@ export const registerOutputs: Register = on => {
 
     return ran
   }).catch(($, e, next) => next(e))
+
+  // A permission rule or check refused a call: it may also come back as a deny, recorded once by id.
+  on('classic.PermissionDenied', async ($, e, next) => {
+    const input = typeof e.tool_input === 'object' && e.tool_input !== null ? (e.tool_input as Record<string, unknown>) : {}
+    await recordBlocked($, e.tool_use_id, e.tool_name, input, e.reason).catch(() => undefined)
+
+    return next(e)
+  })
 
   // A turn ends: background commands no longer in flight are done.
   on('classic.Stop', async ($, e, next) => {
@@ -763,192 +827,220 @@ export const registerOutputs: Register = on => {
     return ran
   }).catch(($, e, next) => next(e))
 
-  on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Text, Button } = $.ui.resolve(e)
-    const out = await read($, outputs)
-    const open = await read($, expanded)
-    const isOpen = (key: string) => open.includes(key)
-    const toggle = (key: string) => () =>
-      update($, expanded, keys => (keys.includes(key) ? keys.filter(k => k !== key) : [...keys, key]))
-    const every = allKeys(out)
-    const isAllOpen = every.length > 0 && every.every(isOpen)
-    const fold = (key: string, label: string, count: number) => (
-      <Box key={`f-${key}`}>
-        <Button key={key} plain label={isOpen(key) ? '▾' : '▸'} onPress={toggle(key)} />
-        <Text> {label} </Text>
-        <Text dimColor>{count}</Text>
+  // The monitor draws its tab row, then asks the chain for the body: answer on this part's tab.
+  on('ui.render', { component: 'Pane', requestId: MONITOR }, async ($, e, next) =>
+    (await read($, activeTab)) === 'outputs' ? drawOutputs($, e) : next(e),
+  )
+}
+
+/** The Outputs tab's body, drawn inside the monitor's pane. */
+async function drawOutputs($: $, e: RenderInput<'Pane'>) {
+  const { Box, Text, Button } = $.ui.resolve(e)
+  const out = await read($, outputs)
+  const open = await read($, expanded)
+  const isOpen = (key: string) => open.includes(key)
+  const toggle = (key: string) => () =>
+    update($, expanded, keys => (keys.includes(key) ? keys.filter(k => k !== key) : [...keys, key]))
+  const every = allKeys(out)
+  const isAllOpen = every.length > 0 && every.every(isOpen)
+  const fold = (key: string, label: string, count: number) => (
+    <Box key={`f-${key}`}>
+      <Button key={key} plain label={isOpen(key) ? '▾' : '▸'} onPress={toggle(key)} />
+      <Text> {label} </Text>
+      <Text dimColor>{count}</Text>
+    </Box>
+  )
+  const lines = (n: { added: number; removed: number }) => (
+    <Text>
+      <Text color="green">+{n.added}</Text> <Text color="red">−{n.removed}</Text>
+    </Text>
+  )
+
+  const blocked = out.blocked ?? []
+  if (out.places.length + blocked.length + out.github.length + out.services.length + out.scheduled.length === 0) {
+    return <Text dimColor>Nothing used or produced yet.</Text>
+  }
+  const places = [...out.places.filter(isProductive), ...out.places.filter(p => !isProductive(p))]
+  const made = out.services.filter(a => !a.isUse)
+  const used = out.services.filter(a => a.isUse)
+
+  return (
+    <Box flexDirection="column">
+      <Box marginBottom={1}>
+        <Button
+          key="all"
+          label={isAllOpen ? 'Collapse all' : 'Expand all'}
+          onPress={() => update($, expanded, () => (isAllOpen ? [] : allKeys(out)))}
+        />
+        <Text> </Text>
+        <Button
+          key="copy"
+          label="Copy all"
+          onPress={async press => {
+            const done = await $.ui.copy({ text: report(out), surface: press.surface })
+            $.ui.toast(done.isCopied ? 'Session outputs copied' : `Copy failed: ${done.reason}`)
+          }}
+        />
       </Box>
-    )
-    const lines = (n: { added: number; removed: number }) => (
-      <Text>
-        <Text color="green">+{n.added}</Text> <Text color="red">−{n.removed}</Text>
-      </Text>
-    )
-
-    if (out.places.length === 0 && out.github.length + out.services.length + out.scheduled.length === 0) {
-      return <Text dimColor>Nothing used or produced yet.</Text>
-    }
-    const places = [...out.places.filter(isProductive), ...out.places.filter(p => !isProductive(p))]
-    const made = out.services.filter(a => !a.isUse)
-    const used = out.services.filter(a => a.isUse)
-
-    return (
-      <Box flexDirection="column">
-        <Box marginBottom={1}>
-          <Button
-            key="all"
-            label={isAllOpen ? 'Collapse all' : 'Expand all'}
-            onPress={() => update($, expanded, () => (isAllOpen ? [] : allKeys(out)))}
-          />
-          <Text> </Text>
-          <Button
-            key="copy"
-            label="Copy all"
-            onPress={async press => {
-              const done = await $.ui.copy({ text: report(out), surface: press.surface })
-              $.ui.toast(done.isCopied ? 'Session outputs copied' : `Copy failed: ${done.reason}`)
-            }}
-          />
-        </Box>
-        {section('GitHub', out.github)}
-        {section('Services', made)}
-        {used.length > 0 && fold('u:services', 'services used', used.length)}
-        {isOpen('u:services') && section('', used)}
-        {section('Scheduled & running', out.scheduled)}
-        {places.map(place => {
-          const total = place.changed.reduce(
-            (sum, f) => ({ added: sum.added + f.added, removed: sum.removed + f.removed }),
-            { added: 0, removed: 0 },
-          )
-          const k = place.root
-          const isQuiet = !isProductive(place)
-
-          return (
-            <Box key={k} flexDirection="column">
-              <Box>
-                <Button key={`p:${k}`} plain label={isOpen(`p:${k}`) ? '▾' : '▸'} onPress={toggle(`p:${k}`)} />
-                <Text bold={!isQuiet} dimColor={isQuiet} wrap="truncate-start"> {short(place.root)}</Text>
-                <Box flexShrink={0}>
-                  {place.remote && <Text dimColor> {place.remote}</Text>}
-                  {!place.isRepo && <Text dimColor> (not git)</Text>}
-                  {place.changed.length > 0 && <Text>  {lines(total)}</Text>}
-                </Box>
-              </Box>
-              {!isOpen(`p:${k}`) && (
-                <Text dimColor wrap="truncate-end">
-                  {'    '}
-                  {counts(place)}
-                </Text>
-              )}
-              {isOpen(`p:${k}`) && (
-                <Box flexDirection="column" paddingLeft={2}>
-                  {place.branches.length > 0 && (
-                    <Text wrap="truncate-end">
-                      branches{' '}
-                      {place.branches.map((b, i) => (
-                        <Text key={`b:${k}:${b}`}>
-                          {i > 0 ? ', ' : ' '}
-                          {place.deleted?.includes(b) ? (
-                            <Text dimColor strikethrough>
-                              {b}
-                            </Text>
-                          ) : (
-                            b
-                          )}
-                        </Text>
-                      ))}
-                    </Text>
-                  )}
-                  {(place.deleted ?? []).some(b => !place.branches.includes(b)) && (
-                    <Text wrap="truncate-end">
-                      deleted{'  '}
-                      <Text dimColor strikethrough>
-                        {(place.deleted ?? []).filter(b => !place.branches.includes(b)).join(', ')}
-                      </Text>
-                    </Text>
-                  )}
-                  {(place.remoteDeleted?.length ?? 0) > 0 && (
-                    <Text wrap="truncate-end">
-                      deleted on remote{'  '}
-                      <Text dimColor strikethrough>
-                        {(place.remoteDeleted ?? []).join(', ')}
-                      </Text>
-                    </Text>
-                  )}
-                  {place.pushes.length > 0 && <Text>pushed  {place.pushes.join(', ')}</Text>}
-                  {place.commits.map(c => (
-                    <Box key={`c:${k}:${c.sha}`} flexDirection="column">
-                      <Box>
-                        <Button key={`s:${k}:${c.sha}`} plain label={isOpen(`s:${k}:${c.sha}`) ? '▾' : '▸'} onPress={toggle(`s:${k}:${c.sha}`)} />
-                        <Box flexShrink={0}>
-                          <Text color="yellow"> {c.sha}</Text>
-                        </Box>
-                        <Text wrap="truncate-end"> {c.subject}</Text>
-                        <Box flexShrink={0}>
-                          {c.branch && <Text dimColor> ({c.branch})</Text>}
-                          {c.kind !== 'committed' && <Text dimColor> {c.kind}</Text>}
-                        </Box>
-                      </Box>
-                      {isOpen(`s:${k}:${c.sha}`) &&
-                        c.files.map(f => (
-                          <Text key={`s:${k}:${c.sha}:${f.path}`} wrap="truncate-start">
-                            {'    '}
-                            {lines(f)} {f.path}
-                          </Text>
-                        ))}
-                    </Box>
-                  ))}
-                  {place.changed.map(f => (
-                    <Text key={`w:${k}:${f.path}`} wrap="truncate-start">
-                      {lines(f)} {f.path}
-                      {f.isCreated && <Text dimColor> new</Text>}
-                      {f.isDeleted && <Text dimColor> deleted</Text>}
-                    </Text>
-                  ))}
-                  {place.used.length > 0 && fold(`r:${k}`, 'read', place.used.length)}
-                  {isOpen(`r:${k}`) &&
-                    place.used.map(f => (
-                      <Text key={`r:${k}:${f.path}`} dimColor wrap="truncate-start">
-                        {'  '}
-                        {f.path}
-                        {f.reads > 1 ? ` ×${f.reads}` : ''}
-                      </Text>
-                    ))}
-                  {place.commands.length > 0 && fold(`x:${k}`, 'commands', place.commands.length)}
-                  {isOpen(`x:${k}`) &&
-                    place.commands.map((c, i) => (
-                      <Text key={`x:${k}:${i}`} color={c.isError ? 'red' : undefined} wrap="truncate-end">
-                        {'  $ '}
-                        {c.command.split('\n')[0]}
-                        {c.isBackground ? ' &' : ''}
-                      </Text>
-                    ))}
-                </Box>
-              )}
+      {blocked.length > 0 && (
+        <Box key="blocked" flexDirection="column" marginBottom={1}>
+          <Text bold color="red">
+            Blocked
+          </Text>
+          {blocked.map(b => (
+            <Box key={`blocked:${b.id}`} flexDirection="column">
+              <Text color="red" wrap="truncate-end">
+                {'  ✗ '}
+                {b.tool} {b.target}
+              </Text>
+              <Text dimColor wrap="truncate-end">
+                {'    '}
+                {b.reason}
+                {b.dir ? ` · ${short(b.dir)}` : ''}
+              </Text>
             </Box>
-          )
-        })}
-      </Box>
-    )
-
-    function section(title: string, list: Action[]) {
-      if (list.length === 0) {
-        return null
-      }
-
-      return (
-        <Box key={`g-${title || 'used'}`} flexDirection="column" marginBottom={title ? 1 : 0}>
-          {title && <Text bold>{title}</Text>}
-          {list.map((a, i) => (
-            <Text key={`g-${title || 'used'}-${i}`} dimColor={a.isUse || a.isDone} wrap="truncate-end">
-              {'  '}
-              {a.isDone ? 'done ' : ''}
-              {a.label}
-              {a.url ? `  ${a.url}` : ''}
-            </Text>
           ))}
         </Box>
-      )
+      )}
+      {section('GitHub', out.github)}
+      {section('Services', made)}
+      {used.length > 0 && fold('u:services', 'services used', used.length)}
+      {isOpen('u:services') && section('', used)}
+      {section('Scheduled & running', out.scheduled)}
+      {places.map(place => {
+        const total = place.changed.reduce(
+          (sum, f) => ({ added: sum.added + f.added, removed: sum.removed + f.removed }),
+          { added: 0, removed: 0 },
+        )
+        const k = place.root
+        const isQuiet = !isProductive(place)
+
+        return (
+          <Box key={k} flexDirection="column">
+            <Box>
+              <Button key={`p:${k}`} plain label={isOpen(`p:${k}`) ? '▾' : '▸'} onPress={toggle(`p:${k}`)} />
+              <Text bold={!isQuiet} dimColor={isQuiet} wrap="truncate-start"> {short(place.root)}</Text>
+              <Box flexShrink={0}>
+                {place.remote && <Text dimColor> {place.remote}</Text>}
+                {!place.isRepo && <Text dimColor> (not git)</Text>}
+                {place.changed.length > 0 && <Text>  {lines(total)}</Text>}
+              </Box>
+            </Box>
+            {!isOpen(`p:${k}`) && (
+              <Text dimColor wrap="truncate-end">
+                {'    '}
+                {counts(place)}
+              </Text>
+            )}
+            {isOpen(`p:${k}`) && (
+              <Box flexDirection="column" paddingLeft={2}>
+                {place.branches.length > 0 && (
+                  <Text wrap="truncate-end">
+                    branches{' '}
+                    {place.branches.map((b, i) => (
+                      <Text key={`b:${k}:${b}`}>
+                        {i > 0 ? ', ' : ' '}
+                        {place.deleted?.includes(b) ? (
+                          <Text dimColor strikethrough>
+                            {b}
+                          </Text>
+                        ) : (
+                          b
+                        )}
+                      </Text>
+                    ))}
+                  </Text>
+                )}
+                {(place.deleted ?? []).some(b => !place.branches.includes(b)) && (
+                  <Text wrap="truncate-end">
+                    deleted{'  '}
+                    <Text dimColor strikethrough>
+                      {(place.deleted ?? []).filter(b => !place.branches.includes(b)).join(', ')}
+                    </Text>
+                  </Text>
+                )}
+                {(place.remoteDeleted?.length ?? 0) > 0 && (
+                  <Text wrap="truncate-end">
+                    deleted on remote{'  '}
+                    <Text dimColor strikethrough>
+                      {(place.remoteDeleted ?? []).join(', ')}
+                    </Text>
+                  </Text>
+                )}
+                {place.pushes.length > 0 && <Text>pushed  {place.pushes.join(', ')}</Text>}
+                {place.commits.map(c => (
+                  <Box key={`c:${k}:${c.sha}`} flexDirection="column">
+                    <Box>
+                      <Button key={`s:${k}:${c.sha}`} plain label={isOpen(`s:${k}:${c.sha}`) ? '▾' : '▸'} onPress={toggle(`s:${k}:${c.sha}`)} />
+                      <Box flexShrink={0}>
+                        <Text color="yellow"> {c.sha}</Text>
+                      </Box>
+                      <Text wrap="truncate-end"> {c.subject}</Text>
+                      <Box flexShrink={0}>
+                        {c.branch && <Text dimColor> ({c.branch})</Text>}
+                        {c.kind !== 'committed' && <Text dimColor> {c.kind}</Text>}
+                      </Box>
+                    </Box>
+                    {isOpen(`s:${k}:${c.sha}`) &&
+                      c.files.map(f => (
+                        <Text key={`s:${k}:${c.sha}:${f.path}`} wrap="truncate-start">
+                          {'    '}
+                          {lines(f)} {f.path}
+                        </Text>
+                      ))}
+                  </Box>
+                ))}
+                {place.changed.map(f => (
+                  <Text key={`w:${k}:${f.path}`} wrap="truncate-start">
+                    {lines(f)} {f.path}
+                    {f.isCreated && <Text dimColor> new</Text>}
+                    {f.isDeleted && <Text dimColor> deleted</Text>}
+                  </Text>
+                ))}
+                {place.used.length > 0 && fold(`r:${k}`, 'read', place.used.length)}
+                {isOpen(`r:${k}`) &&
+                  place.used.map(f => (
+                    <Text key={`r:${k}:${f.path}`} dimColor wrap="truncate-start">
+                      {'  '}
+                      {f.path}
+                      {f.reads > 1 ? ` ×${f.reads}` : ''}
+                    </Text>
+                  ))}
+                {place.commands.length > 0 && fold(`x:${k}`, 'commands', place.commands.length)}
+                {isOpen(`x:${k}`) &&
+                  place.commands.map((c, i) => (
+                    <Text key={`x:${k}:${i}`} color={c.isError || c.isBlocked ? 'red' : undefined} wrap="truncate-end">
+                      {c.isBlocked ? '  ✗ ' : '  $ '}
+                      {c.command.split('\n')[0]}
+                      {c.isBackground ? ' &' : ''}
+                      {c.isBlocked ? '  blocked' : ''}
+                    </Text>
+                  ))}
+              </Box>
+            )}
+          </Box>
+        )
+      })}
+    </Box>
+  )
+
+  function section(title: string, list: Action[]) {
+    if (list.length === 0) {
+      return null
     }
-  })
+
+    return (
+      <Box key={`g-${title || 'used'}`} flexDirection="column" marginBottom={title ? 1 : 0}>
+        {title && <Text bold>{title}</Text>}
+        {list.map((a, i) => (
+          <Text key={`g-${title || 'used'}-${i}`} dimColor={a.isUse || a.isDone} wrap="truncate-end">
+            {'  '}
+            {a.isDone ? 'done ' : ''}
+            {a.label}
+            {a.url ? `  ${a.url}` : ''}
+          </Text>
+        ))}
+      </Box>
+    )
+  }
 }

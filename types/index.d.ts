@@ -8,6 +8,8 @@ export type Command = {
   command: string
   description?: string
   isError?: boolean
+  /** Refused before it ran: by a hook, a permission rule or check, or the person at the prompt. */
+  isBlocked?: boolean
   isBackground?: boolean
 }
 
@@ -38,7 +40,21 @@ export type Place = {
 
 export type Action = { label: string; url?: string; isUse?: boolean; taskId?: string; isDone?: boolean }
 
+/** A tool call refused before it ran. */
+export type Blocked = {
+  /** The call's tool_use_id: a refusal reported twice is kept once. */
+  id: string
+  tool: string
+  /** What it would have touched: the command, the file, the service. */
+  target: string
+  reason: string
+  /** The directory it would have run in, when it has one. */
+  dir?: string
+}
+
 export type Outputs = {
+  /** Absent in a record kept from before blocked calls were followed. */
+  blocked?: Blocked[]
   places: Place[]
   github: Action[]
   services: Action[]
@@ -47,6 +63,11 @@ export type Outputs = {
 
 declare module 'claude-code' {
   interface PluginState {
-    'session-monitor': { outputs: Outputs; expanded: string[] }
+    'session-monitor': {
+      /** The monitor's tab on show. */
+      tab: string
+      outputs: Outputs
+      expanded: string[]
+    }
   }
 }
