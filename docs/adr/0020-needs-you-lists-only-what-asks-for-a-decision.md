@@ -1,6 +1,6 @@
 # 0020. Needs you lists only what asks for a decision, and position is read on first draw
 
-- Status: accepted
+- Status: superseded by 0021
 - Amends: 0019, § "Decision"
 - Amends: 0018, § "Consequences"
 - Date: 2026-10-09

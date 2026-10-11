@@ -74,6 +74,13 @@ def main():
                                 f"(declared by {name})")
         for target in sorted(amends & adrs.keys()):
             other = adrs[target]
+            # A superseded ADR's Status names only what replaced it; its amendments stay declared
+            # in their own Amends lines, and its amended sections keep their markers.
+            if other["status"].startswith("superseded by"):
+                if f"Amended by [ADR {number}]" not in other["text"]:
+                    problems.append(f"{other['file']}: the section {name} replaces needs a "
+                                    f"'> **Amended by [ADR {number}](...)**' line")
+                continue
             if number not in amended_by(other["status"]):
                 problems.append(f"{other['file']}: Status must list 'amended by {number}' "
                                 f"(declared by {name})")

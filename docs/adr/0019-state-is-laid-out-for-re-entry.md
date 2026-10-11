@@ -1,6 +1,6 @@
 # 0019. State is laid out for re-entry: exceptions first, the last activity as the cue
 
-- Status: accepted, amended by 0020
+- Status: superseded by 0021
 - Amends: 0018, § "Decision"
 - Date: 2026-10-09
 - References: research below

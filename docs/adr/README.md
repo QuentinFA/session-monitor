@@ -54,6 +54,10 @@ different — if so, it is a new ADR, in one of two forms:
   > **Amended by [ADR NNNN](NNNN-title.md):** what changed, in one sentence.
   ```
 
+An amended ADR that is later superseded takes `superseded by <new>` as its whole Status: what
+replaced it is what a reader needs. Its amendments stay declared in their own `- Amends:` lines, and
+its amended sections keep their markers.
+
 Both halves of a link, and the index row below, land in the same commit.
 `scripts/check-adrs.py` checks they agree; run it before committing:
 
@@ -101,9 +105,10 @@ The Status column mirrors each ADR's Status line.
 | [0015](0015-blocked-folds-like-every-section.md) | Blocked folds like every other section | accepted |
 | [0016](0016-what-the-record-cannot-know-it-says.md) | What the record cannot know, it says it cannot know | accepted |
 | [0017](0017-what-every-part-reads-is-set-at-session-start.md) | What every part reads is set when the session starts | accepted |
-| [0018](0018-state-shows-what-exists-and-guesses-nothing.md) | State shows what already exists, and guesses nothing | accepted, amended by 0019, 0020 |
-| [0019](0019-state-is-laid-out-for-re-entry.md) | State is laid out for re-entry: exceptions first, the last activity as the cue | accepted, amended by 0020 |
-| [0020](0020-needs-you-lists-only-what-asks-for-a-decision.md) | Needs you lists only what asks for a decision, and position is read on first draw | accepted |
+| [0018](0018-state-shows-what-exists-and-guesses-nothing.md) | State shows what already exists, and guesses nothing | superseded by 0021 |
+| [0019](0019-state-is-laid-out-for-re-entry.md) | State is laid out for re-entry: exceptions first, the last activity as the cue | superseded by 0021 |
+| [0020](0020-needs-you-lists-only-what-asks-for-a-decision.md) | Needs you lists only what asks for a decision, and position is read on first draw | superseded by 0021 |
+| [0021](0021-the-state-tab-is-removed.md) | The State tab is removed | accepted |
 
 ## Why it works this way
 

@@ -65,79 +65,13 @@ export type Blocked = {
   dir?: string
 }
 
-/** One thing the session did, in the order it happened: the trail that cues re-entry. */
-export type Activity = {
-  /** Milliseconds since the epoch. */
-  at: number
-  kind: 'edited' | 'created' | 'ran' | 'committed' | 'pushed' | 'branched' | 'deleted branch' | 'github'
-  label: string
-  /** The repository or directory it happened in. */
-  dir?: string
-}
-
 export type Outputs = {
-  /** Newest last; absent in a record kept from before it was kept. */
-  activity?: Activity[]
   /** Absent in a record kept from before blocked calls were followed. */
   blocked?: Blocked[]
   places: Place[]
   github: Action[]
   services: Action[]
   scheduled: Action[]
-}
-
-/** Where the session's working directory stands in git and on GitHub, as last read. */
-export type Position = {
-  dir: string
-  isRepo: boolean
-  branch?: string
-  upstream?: string
-  ahead: number
-  behind: number
-  staged: number
-  unstaged: number
-  untracked: number
-  pr?: {
-    number: number
-    url: string
-    state: string
-    isDraft: boolean
-    mergeable: string
-    reviewDecision: string
-    passing: number
-    failing: number
-    pending: number
-    failingNames: string[]
-  }
-  /** Why the PR could not be read, when `gh` failed for a reason other than "no PR". */
-  prError?: string
-  /** Milliseconds since the epoch. */
-  readAt: number
-}
-
-/** One main-loop turn: from the prompt to the answer. */
-export type Turn = {
-  startedAt: number
-  /** The person's request, first line. */
-  prompt?: string
-  endedAt?: number
-  /** As the engine measured it. */
-  durationMs?: number
-  reason?: string
-  /** The first line of the answer. */
-  summary?: string
-  /** The answer's last line, when it ends on a question. */
-  question?: string
-}
-
-/** What the main loop is doing right now. */
-export type Now = {
-  isWorking: boolean
-  since: number
-  /** The tool running, with a short subject. */
-  tool?: string
-  /** An AskUserQuestion waiting for the person's answer. */
-  asking?: string
 }
 
 declare module 'claude-code' {
@@ -151,9 +85,6 @@ declare module 'claude-code' {
       expanded: string[]
       /** The Outputs tab's Reset was pressed once and awaits its confirmation. */
       confirmReset: boolean
-      position: Position | null
-      turns: Turn[]
-      now: Now | null
     }
   }
 }

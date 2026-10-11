@@ -9,7 +9,6 @@ pane has the keyboard. `/session-monitor <tab>` opens it on that tab.
 | Part | Tab | Status |
 | --- | --- | --- |
 | **outputs** | everything the session used and produced, by directory and across repos | done |
-| **state** | where the session stands: branch, tree, PR and checks; whether Claude works or waits; what needs you; the last turns | done |
 | **notes** | the work the model defers, made visible — set aside: it must show what the model already records, not add a tracker | rethinking |
 | **analysis** | what went wrong and what you corrected, kept for `reflect` | planned |
 
@@ -41,30 +40,6 @@ summary line until opened:
 
 **Expand all / Collapse all** opens every fold. **Copy all** puts the whole record on the clipboard
 as markdown. **Reset** clears it, after a confirmation.
-
-## state
-
-`/session-monitor state` opens it. It is laid out for coming back to a session — nothing on it is
-asked of the model:
-
-```
-Waiting on you · 3m                     main · clean · no PR · 12s ↻
-
-Needs you
-  • Claude asked: Should I keep the old command as an alias?
-  • #12: 1 check failing — test
-
-You asked "Run some tests to see how it behaves" — answered
-
-Last activity
-  edited    src/state.tsx                                    5m
-  ran       claude plugin test .                             4m
-  committed 77f1ce1 state (feat): add the State tab          3m
-```
-
-Needs you appears only when something asks you for a decision; Running, when a background command is still going.
-It refreshes when a turn ends, after `git` and `gh` commands, every minute, and on ↻. The reasoning
-and the research behind it are in [ADR 0019](docs/adr/0019-state-is-laid-out-for-re-entry.md).
 
 ## Install
 

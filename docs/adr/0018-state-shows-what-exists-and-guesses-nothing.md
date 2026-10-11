@@ -1,6 +1,6 @@
 # 0018. State shows what already exists, and guesses nothing
 
-- Status: accepted, amended by 0019, 0020
+- Status: superseded by 0021
 - Date: 2026-10-09
 
 ## Context
