@@ -11,6 +11,7 @@ pane has the keyboard. `/session-monitor <tab>` opens it on that tab.
 | **outputs** | everything the session used and produced, by directory and across repos | done |
 | **git** | the history of the session's repositories as a commit graph, to look at, not act on | done |
 | **changed** | what is not committed yet, file by file, with its diff | done |
+| **stats** | the status line's figures — context, plan limits, cost, cache — each with what it means | done |
 | **notes** | the work the model defers, made visible — set aside: it must show what the model already records, not add a tracker | rethinking |
 | **analysis** | what went wrong and what you corrected, kept for `reflect` | planned |
 
@@ -68,6 +69,19 @@ way a desktop git client draws it, read-only.
 - Ctrl/Cmd-click a path to open the file, as you would a link.
 - Same repository as the Git tab. Git is read again after each command or edit the session makes,
   on **↻**, and after 30 seconds. Nothing here stages, discards or commits.
+
+## stats
+
+`/session-monitor stats` opens the monitor on this tab: what a status line shows, one figure a row,
+each with a one-line definition — **Hide definitions** folds them.
+
+- **Context** used, with a bar, and its breakdown by category on demand
+- **Plan limits** — the 5-hour and weekly windows, and when they reset
+- **Cost**, with the session's tokens in, from cache and out, and the **Prompt cache**: how much of the last request it served, its lifetime (5 min
+  or 1 h) and how long it stays warm — read from the session's transcript
+- **Session** time, model, prompts and directory
+
+Every figure is the engine's own, or the transcript's; the plugin counts none of them.
 
 ## Install
 

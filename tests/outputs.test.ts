@@ -611,7 +611,7 @@ describe('the monitor', () => {
     })
     expect(opened).toEqual(['session-monitor'])
     expect(await $.command.run(typed('session-monitor', 'nope'))).toMatchObject({
-      text: 'No tab "nope". Tabs: outputs, git, changed.',
+      text: 'No tab "nope". Tabs: outputs, git, changed, stats.',
     })
     expect(opened).toEqual(['session-monitor'])
   })

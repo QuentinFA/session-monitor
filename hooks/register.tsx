@@ -7,13 +7,14 @@ import type { TabId } from '../src/lib/pane'
 import { registerChanged } from '../src/changed'
 import { registerGit } from '../src/git'
 import { registerOutputs } from '../src/outputs'
+import { registerStats } from '../src/stats'
 
 type $ = EngineInterface
 
 const activeTab = atom({ plugin: 'session-monitor', key: 'tab' } as const, 'outputs')
 const homeDir = atom({ plugin: 'session-monitor', key: 'home' } as const, '')
 
-const LABELS: Record<TabId, string> = { outputs: 'Outputs', git: 'Git', changed: 'Changed' }
+const LABELS: Record<TabId, string> = { outputs: 'Outputs', git: 'Git', changed: 'Changed', stats: 'Stats' }
 
 /** The tab row, then the body the active part's render hook answers further down the chain. */
 async function drawMonitor($: $, e: RenderInput<'Pane'>, body: Promise<unknown>) {
@@ -77,4 +78,5 @@ export const register: Register = (on, options) => {
   registerOutputs(on, options)
   registerGit(on, options)
   registerChanged(on, options)
+  registerStats(on, options)
 }

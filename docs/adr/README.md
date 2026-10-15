@@ -137,3 +137,8 @@ Researched when these rules were set:
 | [0024](0024-git-is-read-again-after-a-command-not-on-every-draw.md) | Git is read again after a command, not on every draw | accepted |
 | [0025](0025-the-log-is-read-in-gits-own-order.md) | The log is read in git's own order, and a failure says why | accepted |
 | [0026](0026-changed-lists-the-work-tree-and-shows-one-diff.md) | Changed lists what is not committed, and shows one file's diff at a time | accepted |
+| [0027](0027-stats-gives-each-figure-its-meaning.md) | Stats shows the status line's figures, each with what it means | accepted, amended by 0028, 0029 |
+| [0028](0028-stats-shows-only-what-the-engine-reports.md) | Stats shows only what the engine reports | accepted, amended by 0030 |
+| [0029](0029-a-stat-stacks-its-details-and-definition.md) | A stat stacks its details and definition under its value | accepted |
+| [0030](0030-the-cache-lifetime-is-read-from-the-transcript.md) | The cache's lifetime is read from the transcript | accepted, amended by 0032 |
+| [0032](0032-cost-adds-the-transcripts-tokens.md) | Cost adds the transcript's tokens, and the transcript is found at once | accepted |

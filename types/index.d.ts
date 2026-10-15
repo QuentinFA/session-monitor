@@ -97,6 +97,12 @@ declare module 'claude-code' {
       gitLimit: number
       /** The file the Changed tab shows the diff of, as `<root>|<section>|<path>`; empty for the first. */
       changedFile: string
+      /** The Stats tab shows each figure's definition. */
+      statsDefs: boolean
+      /** The Stats tab's context breakdown is open. */
+      statsBreakdown: boolean
+      /** The session's transcript, as the last prompt reported it: where the cache's lifetime is read. */
+      transcript: string
     }
   }
 }
