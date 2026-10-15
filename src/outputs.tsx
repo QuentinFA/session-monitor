@@ -206,7 +206,6 @@ const touch = async ($: $, dir: string, fn: (place: Place) => Place) => {
       places: has ? out.places.map(p => (p === has ? next : p)) : [...out.places, next],
     }
   })
-  await refreshStatus($)
 }
 
 const relative = (place: Place, path: string) =>
@@ -260,26 +259,6 @@ const countHunks = (hunks: readonly { lines: readonly string[] }[]) => {
   }
 
   return { added, removed }
-}
-
-const refreshStatus = async ($: $) => {
-  const { places, blocked = [] } = await read($, outputs)
-  let added = 0
-  let removed = 0
-  let commits = 0
-  for (const place of places) {
-    commits += place.commits.length
-    for (const file of place.changed) {
-      added += file.added
-      removed += file.removed
-    }
-  }
-  const parts = [
-    places.length > 0 &&
-      `${places.length} dir${places.length === 1 ? '' : 's'} · +${added} −${removed} · ${commits} commit${commits === 1 ? '' : 's'}`,
-    blocked.length > 0 && `${blocked.length} blocked`,
-  ].filter(Boolean)
-  $.ui.status(parts.length === 0 ? undefined : parts.join(' · '))
 }
 
 const commitOf = async ($: $, root: string, sha: string, kind: string, branch?: string) => {
@@ -428,7 +407,6 @@ const recordBlocked = async ($: $, id: string, tool: string, input: Record<strin
   await update($, outputs, out =>
     (out.blocked ?? []).some(b => b.id === id) ? out : { ...out, blocked: [...(out.blocked ?? []), entry] },
   )
-  await refreshStatus($)
 }
 
 /** Why a call was refused, or undefined when it ran. */
@@ -850,7 +828,6 @@ async function resetOutputs($: $) {
   await update($, outputs, () => EMPTY)
   await update($, expanded, () => [])
   await update($, confirmReset, () => false)
-  await refreshStatus($)
 }
 
 /** The Outputs tab's body, drawn inside the monitor's pane. */

@@ -16,8 +16,7 @@ spent: it records from the session's own events and is always there.
 
 ## outputs
 
-`/session-monitor outputs` opens the monitor on this tab. The status line keeps a one-line count:
-`3 dirs · +120 −30 · 2 commits · 1 blocked`.
+`/session-monitor outputs` opens the monitor on this tab.
 
 ### What it shows
 

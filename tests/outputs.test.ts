@@ -49,7 +49,6 @@ function host(
 
     return next(e)
   })
-  on('ui.status', () => ({ value: undefined }))
   on('session.cwd', () => ({ value: cwd }))
   on('fs.stat', (_$, e) => ({
     value: {
@@ -291,6 +290,22 @@ describe('what the first pass missed', () => {
     })
 
     expect(await ui.find({ text: /^\s*1 blocked · 2 commands$/ })).toBeDefined()
+  })
+})
+
+describe('the status line', () => {
+  test('is left alone: the record is drawn in the pane only', async ($, on) => {
+    const set: unknown[] = []
+    on('ui.status', (_$, e) => {
+      set.push(e)
+
+      return { value: undefined }
+    })
+    host(on, [{ root: '/work/app', head: 'a1' }], command => (command.startsWith('rm') ? { deny: 'no' } : {}))
+    await $.tool.call({ tool: 'Bash', command: 'git status' })
+    await $.tool.call({ tool: 'Bash', command: 'rm -rf build' })
+
+    expect(set).toEqual([])
   })
 })
 

@@ -1,6 +1,6 @@
 # 0013. Blocked calls are shown first, in red
 
-- Status: accepted, amended by 0015
+- Status: accepted, amended by 0015, 0033
 - Date: 2026-10-09
 
 ## Context
@@ -10,6 +10,8 @@ left no trace: the recorders returned on a refusal, so a blocked `git push --for
 nothing happened.
 
 ## Decision
+
+> **Amended by [ADR 0033](0033-the-plugin-writes-nothing-to-the-status-line.md):** the status line no longer counts refusals; the plugin writes nothing there.
 
 > **Amended by [ADR 0015](0015-blocked-folds-like-every-section.md):** Blocked folds like every other section, collapsed by default.
 

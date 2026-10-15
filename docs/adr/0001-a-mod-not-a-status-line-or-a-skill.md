@@ -1,6 +1,6 @@
 # 0001. The session's outputs are recorded by a mod, not a status line or a skill
 
-- Status: accepted
+- Status: accepted, amended by 0033
 - Date: 2026-10-08
 
 ## Context
@@ -12,6 +12,8 @@ rest after the fact means a model turn spent reading the transcript. What a sess
 be visible while it runs, across every repository, at no cost in tokens.
 
 ## Decision
+
+> **Amended by [ADR 0033](0033-the-plugin-writes-nothing-to-the-status-line.md):** no status entry: the record is drawn in the pane only.
 
 A mod that records from tool calls as they happen and draws a pane, with a one-line status entry
 beside it.
