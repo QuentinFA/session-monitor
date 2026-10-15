@@ -132,7 +132,7 @@ Researched when these rules were set:
 - Considered and left out at this size: an archive directory for superseded
   ADRs (breaks links; the Status line does the job), a generated index, and a
   separate current-state architecture document (duplicates `CLAUDE.md` and drifts).
-| [0022](0022-git-history-is-drawn-in-straight-lanes-read-only.md) | Git history is drawn in straight lanes, and only viewed | accepted |
+| [0022](0022-git-history-is-drawn-in-straight-lanes-read-only.md) | Git history is drawn in straight lanes, and only viewed | accepted, amended by 0034 |
 | [0023](0023-the-git-tab-offers-the-sessions-repositories.md) | The Git tab offers the session's repositories, granted ones included | accepted |
 | [0024](0024-git-is-read-again-after-a-command-not-on-every-draw.md) | Git is read again after a command, not on every draw | accepted |
 | [0025](0025-the-log-is-read-in-gits-own-order.md) | The log is read in git's own order, and a failure says why | accepted |
@@ -144,3 +144,4 @@ Researched when these rules were set:
 | [0031](0031-tabs-are-plain-separated-by-bars.md) | The tabs are plain labels separated by bars, without hotkeys | accepted |
 | [0032](0032-cost-adds-the-transcripts-tokens.md) | Cost adds the transcript's tokens, and the transcript is found at once | accepted |
 | [0033](0033-the-plugin-writes-nothing-to-the-status-line.md) | The plugin writes nothing to the status line | accepted |
+| [0034](0034-the-graph-takes-a-third-of-the-pane.md) | The graph takes at most a third of the pane | accepted |

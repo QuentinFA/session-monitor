@@ -155,3 +155,28 @@ export function parseRefs(decoration: string): Ref[] {
       return []
     })
 }
+
+/**
+ * A row's graph cut to `lanes` lanes: what lies past the last one folds into its cell — `…●` when the
+ * row's commit is out there, `… ` when only lanes are — in the color of the first lane cut away.
+ */
+export function clip(chars: readonly GraphChar[], col: number, lanes: number): GraphChar[] {
+  const keep = (lanes - 1) * 2
+  if (chars.length <= lanes * 2) {
+    return chars.slice()
+  }
+  const hidden = chars.slice(keep)
+  if (hidden.every(c => c.ch === ' ')) {
+    return chars.slice(0, keep)
+  }
+  const color = hidden.find(c => c.ch !== ' ')?.color ?? null
+
+  return [
+    ...chars.slice(0, keep),
+    { ch: '…', color },
+    col * 2 >= keep ? { ch: '●', color: chars[col * 2]?.color ?? color } : { ch: ' ', color: null },
+  ]
+}
+
+/** How many lanes the graph may take: about a third of the pane, never under three. */
+export const laneBudget = (columns: number) => Math.max(3, Math.floor(columns / 6))

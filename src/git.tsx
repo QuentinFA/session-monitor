@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, RenderInput } from 'claude-code'
 
 import type { Outputs } from '../types'
-import { layout, parseRefs, runs } from './lib/graph'
+import { clip, laneBudget, layout, parseRefs, runs } from './lib/graph'
 import type { GraphRow, LogCommit, Ref } from './lib/graph'
 import { MONITOR } from './lib/pane'
 import { orderRepos, shortPath } from './lib/repos'
@@ -295,8 +295,9 @@ async function drawGit($: $, e: RenderInput<'Pane'>) {
     }
   }
 
+  const laneCap = laneBudget(e.props.bodyColumns)
   const gutter = (row: GraphRow) => {
-    const width = row.chars.length
+    const width = Math.min(row.chars.length, laneCap * 2)
     const lanes = row.below.map(color => ({ ch: color === null ? ' ' : '│', color }))
 
     return runs(
@@ -372,7 +373,7 @@ async function drawGit($: $, e: RenderInput<'Pane'>) {
 
   return (
     <Box flexDirection="column">
-      <Box marginBottom={1}>
+      <Box>
         {repos.length > 1 ? (
           <Select
             key="repo"
@@ -387,7 +388,8 @@ async function drawGit($: $, e: RenderInput<'Pane'>) {
         ) : (
           <Text bold>{shortPath(home, root)}</Text>
         )}
-        <Text> </Text>
+      </Box>
+      <Box marginBottom={1}>
         <Button
           key="scope:current"
           label="Current branch"
@@ -432,7 +434,11 @@ async function drawGit($: $, e: RenderInput<'Pane'>) {
         const isHead = refs.some(r => r.kind === 'head' || r.kind === 'detached')
         const isMade = made.has(c.sha.slice(0, 7))
         const isOpen = opened === `${root}|${c.sha}`
-        const chars = row.chars.map((ch, x) => (x === row.col * 2 && isHead ? { ...ch, ch: '◉' } : ch))
+        const chars = clip(
+          row.chars.map((ch, x) => (x === row.col * 2 && isHead ? { ...ch, ch: '◉' } : ch)),
+          row.col,
+          laneCap,
+        ).map(ch => (ch.ch === '●' && isHead ? { ...ch, ch: '◉' } : ch))
 
         return (
           <Box key={`row:${c.sha}`} flexDirection="column">

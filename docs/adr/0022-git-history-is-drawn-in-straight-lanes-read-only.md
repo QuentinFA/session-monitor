@@ -1,6 +1,6 @@
 # 0022. Git history is drawn in straight lanes, and only viewed
 
-- Status: accepted
+- Status: accepted, amended by 0034
 - Date: 2026-10-15
 
 ## Context
@@ -33,6 +33,8 @@ known for readable graphs keep a branch in one column from its tip to where it f
 - Nothing in the tab writes to a repository.
 
 ## Consequences
+
+> **Amended by [ADR 0034](0034-the-graph-takes-a-third-of-the-pane.md):** the graph takes at most a third of the pane; lanes past it fold into its edge.
 
 - When two lanes wait for the same commit, the commit takes the leftmost and the others join it on
   its row, so a branch's tip can sit right of its base: intentional, it keeps the columns straight.

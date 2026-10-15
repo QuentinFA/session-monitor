@@ -1,6 +1,6 @@
 import type { On } from 'claude-code'
 
-import { layout, parseRefs } from '../src/lib/graph'
+import { clip, laneBudget, layout, parseRefs } from '../src/lib/graph'
 import type { LogCommit } from '../src/lib/graph'
 import { describe, expect, test } from 'claude-code/testing'
 
@@ -57,6 +57,23 @@ describe('the graph', () => {
 
   test('opens no lane for a parent listed before its child', async () => {
     expect(drawn([commit('a'), commit('b', ['a']), commit('c', ['b'])])).toEqual(['●', '●', '●'])
+  })
+
+  test('folds the lanes past its budget into the edge, the commit drawn there when it is out there', async () => {
+    // Five tips side by side, then their common parent.
+    const commits = [...'vwxyz'].map(sha => commit(sha, ['a'])).concat(commit('a'))
+    const rows = layout(commits)
+    const cut = (i: number) => clip((rows[i] as (typeof rows)[number]).chars, (rows[i] as (typeof rows)[number]).col, 3).map(c => c.ch).join('').trimEnd()
+
+    expect(cut(2)).toBe('│ │ ●')
+    expect(cut(3)).toBe('│ │ …●')
+    expect(cut(5)).toBe('●─╯─…')
+    expect(laneBudget(45)).toBe(7)
+
+    // A commit in a kept lane, with lanes running past the budget.
+    const passing = layout([commit('t', ['u']), ...[...'pqr'].map(sha => commit(sha, ['a'])), commit('u', ['a'])])
+    const last = passing[4] as (typeof passing)[number]
+    expect(clip(last.chars, last.col, 3).map(c => c.ch).join('').trimEnd()).toBe('● │ …')
   })
 
   test('names refs short and leaves a remote HEAD out', async () => {
