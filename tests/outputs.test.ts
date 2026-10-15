@@ -581,7 +581,7 @@ describe('the monitor', () => {
   }
 
   for (const surface of ['terminal', 'desktop'] as const) {
-    test(`draws a tab row with a hotkey per tab, above the active tab (${surface})`, async ($, on) => {
+    test(`draws the tabs plain, separated by bars, above the active tab (${surface})`, async ($, on) => {
       host(on, [{ root: '/work/app', head: 'a1' }])
       await $.tool.call({ tool: 'Bash', command: 'git checkout -b feat/x' })
 
@@ -592,7 +592,9 @@ describe('the monitor', () => {
         requestId: 'session-monitor',
         props: PANE_PROPS,
       })
-      expect(await ui.find({ key: 'tab:outputs', text: 'Outputs' })).toBeDefined()
+      expect((await ui.find({ key: 'tab:outputs', text: 'Outputs' }))?.props).toMatchObject({ plain: true })
+      expect((await ui.find({ key: 'tab:git' }))?.props).toMatchObject({ dimColor: true })
+      expect(await ui.findAll({ type: 'Text', text: ' | ' })).toHaveLength(3)
       expect(await ui.find({ text: /1 branch · 1 command/ })).toBeDefined()
     })
   }

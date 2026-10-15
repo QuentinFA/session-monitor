@@ -1,6 +1,6 @@
 # 0012. One pane with a tab per part
 
-- Status: accepted, amended by 0014, 0017
+- Status: accepted, amended by 0014, 0017, 0031
 - Amends: 0010, § "Decision"
 - Date: 2026-10-09
 
@@ -10,6 +10,8 @@ With a pane per part, the parts show as the engine's own tabs: mixed with other 
 drawn only while more than one pane is open, and reached through a command per part.
 
 ## Decision
+
+> **Amended by [ADR 0031](0031-tabs-are-plain-separated-by-bars.md):** the tabs are plain labels separated by `|`, without hotkeys.
 
 > **Amended by [ADR 0014](0014-outputs-has-no-command-reset-is-a-button.md):** `/outputs` is gone; its tab is reached through `/session-monitor`.
 

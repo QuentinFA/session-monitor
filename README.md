@@ -3,8 +3,7 @@
 A Claude Code plugin of panes that follow a session as it runs — no skill to invoke, no model turn
 spent: it records from the session's own events and is always there.
 
-`/session-monitor` opens one pane with a tab per part — click a tab, or press its digit while the
-pane has the keyboard. `/session-monitor <tab>` opens it on that tab.
+`/session-monitor` opens one pane with a tab per part — click a tab, or reach it with the focus ring. `/session-monitor <tab>` opens it on that tab.
 
 | Part | Tab | Status |
 | --- | --- | --- |

@@ -26,17 +26,18 @@ async function drawMonitor($: $, e: RenderInput<'Pane'>, body: Promise<unknown>)
     <Box flexDirection="column">
       <Box marginBottom={1}>
         {TAB_IDS.map((id, i) => (
-          <Box key={`tabwrap:${id}`} marginRight={1}>
+          <Box key={`tabwrap:${id}`}>
+            {i > 0 && <Text dimColor> | </Text>}
+            {/* Plain, without brackets or a hotkey: a plain Button draws its hotkey before the label. */}
             <Button
               key={`tab:${id}`}
+              plain
               label={LABELS[id]}
-              hotkey={String(i + 1)}
-              variant={id === tab ? 'primary' : undefined}
+              dimColor={id !== tab}
               onPress={() => update($, activeTab, () => id)}
             />
           </Box>
         ))}
-        <Text dimColor> session monitor</Text>
       </Box>
       {(await body) as never}
     </Box>

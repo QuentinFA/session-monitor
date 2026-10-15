@@ -99,7 +99,7 @@ The Status column mirrors each ADR's Status line.
 | [0009](0009-recording-never-affects-the-tool-call.md) | Recording never affects the tool call | accepted |
 | [0010](0010-one-plugin-with-parts-in-its-own-repository.md) | One plugin with parts, in its own repository | accepted, amended by 0012 |
 | [0011](0011-installed-through-claude-code-plugin-dirs.md) | The plugin is installed through CLAUDE_CODE_PLUGIN_DIRS | accepted |
-| [0012](0012-one-pane-with-a-tab-per-part.md) | One pane with a tab per part | accepted, amended by 0014, 0017 |
+| [0012](0012-one-pane-with-a-tab-per-part.md) | One pane with a tab per part | accepted, amended by 0014, 0017, 0031 |
 | [0013](0013-blocked-calls-are-shown-first-in-red.md) | Blocked calls are shown first, in red | accepted, amended by 0015 |
 | [0014](0014-outputs-has-no-command-reset-is-a-button.md) | Outputs has no command of its own; Reset is a button | accepted |
 | [0015](0015-blocked-folds-like-every-section.md) | Blocked folds like every other section | accepted |
@@ -141,4 +141,5 @@ Researched when these rules were set:
 | [0028](0028-stats-shows-only-what-the-engine-reports.md) | Stats shows only what the engine reports | accepted, amended by 0030 |
 | [0029](0029-a-stat-stacks-its-details-and-definition.md) | A stat stacks its details and definition under its value | accepted |
 | [0030](0030-the-cache-lifetime-is-read-from-the-transcript.md) | The cache's lifetime is read from the transcript | accepted, amended by 0032 |
+| [0031](0031-tabs-are-plain-separated-by-bars.md) | The tabs are plain labels separated by bars, without hotkeys | accepted |
 | [0032](0032-cost-adds-the-transcripts-tokens.md) | Cost adds the transcript's tokens, and the transcript is found at once | accepted |
