@@ -140,7 +140,8 @@ describe('the Git tab', () => {
     expect(await ui.find({ text: /^◉$/ })).toBeDefined()
     expect(await ui.find({ text: /^─╮$/ })).toBeDefined()
     expect(await ui.find({ text: /^feat $/ })).toBeDefined()
-    expect(await ui.find({ text: /on main · origin\/main ↑2 · 2 uncommitted/ })).toBeDefined()
+    expect(await ui.find({ text: /^on main · origin\/main ↑2 · $/ })).toBeDefined()
+    expect(await ui.find({ key: 'to-changed', text: '2 uncommitted ›' })).toBeDefined()
   })
 
   test('opens a commit to its message and files', async ($, on) => {

@@ -136,3 +136,4 @@ Researched when these rules were set:
 | [0023](0023-the-git-tab-offers-the-sessions-repositories.md) | The Git tab offers the session's repositories, granted ones included | accepted |
 | [0024](0024-git-is-read-again-after-a-command-not-on-every-draw.md) | Git is read again after a command, not on every draw | accepted |
 | [0025](0025-the-log-is-read-in-gits-own-order.md) | The log is read in git's own order, and a failure says why | accepted |
+| [0026](0026-changed-lists-the-work-tree-and-shows-one-diff.md) | Changed lists what is not committed, and shows one file's diff at a time | accepted |

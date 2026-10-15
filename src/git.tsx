@@ -5,6 +5,7 @@ import type { Outputs } from '../types'
 import { layout, parseRefs, runs } from './lib/graph'
 import type { GraphRow, LogCommit, Ref } from './lib/graph'
 import { MONITOR } from './lib/pane'
+import { orderRepos, shortPath } from './lib/repos'
 
 type $ = EngineInterface
 
@@ -55,8 +56,6 @@ const logs = new Map<string, Log>()
 const details = new Map<string, Detail>()
 const roots = new Map<string, string | null>()
 
-const short = (home: string, path: string) => (home && path.startsWith(home) ? `~${path.slice(home.length)}` : path)
-
 /** The git root holding `dir`, or null outside any repository. */
 async function rootOf($: $, dir: string): Promise<string | null> {
   const known = roots.get(dir)
@@ -75,21 +74,10 @@ async function rootOf($: $, dir: string): Promise<string | null> {
   return root
 }
 
-/** The repositories the session can show: its own first, then those it worked in, then those granted. */
 async function reposOf($: $): Promise<string[]> {
   const cwd = await $.session.cwd().catch(() => '')
-  const out = await read($, outputs)
-  const granted = await read($, gitDirs)
-  const found: string[] = []
-  for (const dir of [cwd, ...granted]) {
-    const root = dir ? await rootOf($, dir) : null
-    if (root) {
-      found.push(root)
-    }
-  }
-  found.splice(1, 0, ...out.places.filter(p => p.isRepo).map(p => p.root))
 
-  return [...new Set(found)]
+  return orderRepos(cwd ? await rootOf($, cwd) : null, await read($, outputs), await read($, gitDirs))
 }
 
 async function loadLog($: $, root: string, scope: string, limit: number): Promise<Log> {
@@ -128,6 +116,9 @@ async function loadLog($: $, root: string, scope: string, limit: number): Promis
   return result
 }
 
+/** The text with its control characters dropped: a drawing holding one is refused whole. */
+const printable = (text: string) => text.replace(/[\x00-\x08\x0b-\x1f\x7f]/g, '')
+
 function parseLog(stdout: string): LogCommit[] {
   return stdout
     .split(END)
@@ -136,7 +127,14 @@ function parseLog(stdout: string): LogCommit[] {
     .map(record => {
       const [sha = '', parents = '', refs = '', author = '', time = '0', subject = ''] = record.split(SEP)
 
-      return { sha, parents: parents.split(' ').filter(Boolean), refs, author, time: Number(time), subject }
+      return {
+        sha,
+        parents: parents.split(' ').filter(Boolean),
+        refs,
+        author: printable(author),
+        time: Number(time),
+        subject: printable(subject),
+      }
     })
 }
 
@@ -169,6 +167,7 @@ async function loadDetail($: $, root: string, sha: string): Promise<Detail | und
       [
         'git',
         'show',
+        '--no-color',
         '--numstat',
         '--summary',
         '--diff-merges=first-parent',
@@ -198,9 +197,9 @@ async function loadDetail($: $, root: string, sha: string): Promise<Detail | und
     }
   }
   const detail: Detail = {
-    author,
+    author: printable(author),
     date,
-    message: message.trim(),
+    message: printable(message.trim()),
     files: files.map(f => ({ ...f, note: notes.get(f.path) ?? (f.path.includes(' => ') ? 'renamed' : undefined) })),
   }
   details.set(key, detail)
@@ -224,11 +223,12 @@ export const registerGit: Register = on => {
     return ran
   }).catch(($, e, next) => next(e))
 
-  // `/add-dir` grants a directory: the tab offers its repository.
+  // `/add-dir` grants a directory: the Git and Changed tabs offer its repository, kept by its root.
   on('classic.DirectoryAdded', async ($, e, next) => {
-    await update($, gitDirs, dirs => (dirs.includes(e.directory) ? dirs : [...dirs, e.directory])).catch(
-      () => undefined,
-    )
+    const root = await rootOf($, e.directory).catch(() => null)
+    if (root) {
+      await update($, gitDirs, roots => (roots.includes(root) ? roots : [...roots, root])).catch(() => undefined)
+    }
 
     return next(e)
   })
@@ -378,14 +378,14 @@ async function drawGit($: $, e: RenderInput<'Pane'>) {
             key="repo"
             label="repo "
             value={root}
-            options={repos.map(r => ({ value: r, label: short(home, r) }))}
+            options={repos.map(r => ({ value: r, label: shortPath(home, r) }))}
             onSelect={value => {
               update($, gitRepo, () => value)
               update($, gitOpen, () => '')
             }}
           />
         ) : (
-          <Text bold>{short(home, root)}</Text>
+          <Text bold>{shortPath(home, root)}</Text>
         )}
         <Text> </Text>
         <Button
@@ -404,14 +404,27 @@ async function drawGit($: $, e: RenderInput<'Pane'>) {
         <Text> </Text>
         <Button key="refresh" label="↻" onPress={reload} />
       </Box>
-      <Text dimColor wrap="truncate-end">
-        {head.branch ? `on ${head.branch}` : 'HEAD detached'}
-        {head.upstream ? ` · ${head.upstream}` : head.branch ? ' · no upstream' : ''}
-        {head.ahead ? ` ↑${head.ahead}` : ''}
-        {head.behind ? ` ↓${head.behind}` : ''}
-        {head.upstream && !head.ahead && !head.behind ? ' in sync' : ''}
-        {head.uncommitted ? ` · ${head.uncommitted} uncommitted` : ' · clean'}
-      </Text>
+      <Box>
+        <Text dimColor wrap="truncate-end">
+          {head.branch ? `on ${head.branch}` : 'HEAD detached'}
+          {head.upstream ? ` · ${head.upstream}` : head.branch ? ' · no upstream' : ''}
+          {head.ahead ? ` ↑${head.ahead}` : ''}
+          {head.behind ? ` ↓${head.behind}` : ''}
+          {head.upstream && !head.ahead && !head.behind ? ' in sync' : ''}
+          {' · '}
+          {head.uncommitted ? '' : 'clean'}
+        </Text>
+        {head.uncommitted > 0 && (
+          <Box flexShrink={0}>
+            <Button
+              key="to-changed"
+              plain
+              label={`${head.uncommitted} uncommitted ›`}
+              onPress={() => update($, activeTab, () => 'changed')}
+            />
+          </Box>
+        )}
+      </Box>
       {log.error && <Text color="red">{log.error}</Text>}
       {log.rows.map(row => {
         const c = row.commit

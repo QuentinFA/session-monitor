@@ -10,6 +10,7 @@ pane has the keyboard. `/session-monitor <tab>` opens it on that tab.
 | --- | --- | --- |
 | **outputs** | everything the session used and produced, by directory and across repos | done |
 | **git** | the history of the session's repositories as a commit graph, to look at, not act on | done |
+| **changed** | what is not committed yet, file by file, with its diff | done |
 | **notes** | the work the model defers, made visible — set aside: it must show what the model already records, not add a tracker | rethinking |
 | **analysis** | what went wrong and what you corrected, kept for `reflect` | planned |
 
@@ -56,6 +57,17 @@ way a desktop git client draws it, read-only.
   repository of any directory granted with `/add-dir`.
 - Git is read again after each command the session runs, on **↻**, and when what is shown is more
   than 30 seconds old. The first 50 commits are shown; **Show 50 more** reads further.
+
+## changed
+
+`/session-monitor changed` opens the monitor on this tab — or press "N uncommitted" on the Git tab.
+
+- The files not committed, in **Staged**, **Unstaged** and **Untracked**, with their `+/−` lines.
+- One file's diff below the list, highlighted. Press a file's status letter to show its diff, or
+  **p** / **n** for the previous and next file.
+- Ctrl/Cmd-click a path to open the file, as you would a link.
+- Same repository as the Git tab. Git is read again after each command or edit the session makes,
+  on **↻**, and after 30 seconds. Nothing here stages, discards or commits.
 
 ## Install
 

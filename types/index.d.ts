@@ -91,10 +91,12 @@ declare module 'claude-code' {
       gitScope: string
       /** The commit the Git tab shows open, as `<root>|<sha>`; empty for none. */
       gitOpen: string
-      /** Directories granted during the session (`/add-dir`): the Git tab offers their repositories. */
+      /** The repositories, by root, of directories granted during the session (`/add-dir`). */
       gitDirs: string[]
       /** How many commits the Git tab reads. */
       gitLimit: number
+      /** The file the Changed tab shows the diff of, as `<root>|<section>|<path>`; empty for the first. */
+      changedFile: string
     }
   }
 }
