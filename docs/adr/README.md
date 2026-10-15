@@ -135,3 +135,4 @@ Researched when these rules were set:
 | [0022](0022-git-history-is-drawn-in-straight-lanes-read-only.md) | Git history is drawn in straight lanes, and only viewed | accepted |
 | [0023](0023-the-git-tab-offers-the-sessions-repositories.md) | The Git tab offers the session's repositories, granted ones included | accepted |
 | [0024](0024-git-is-read-again-after-a-command-not-on-every-draw.md) | Git is read again after a command, not on every draw | accepted |
+| [0025](0025-the-log-is-read-in-gits-own-order.md) | The log is read in git's own order, and a failure says why | accepted |

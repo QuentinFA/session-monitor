@@ -1,4 +1,4 @@
-/** One commit as `git log` lists it, newest first, parents before none of their children. */
+/** One commit as `git log` lists it, newest first. */
 export type LogCommit = {
   sha: string
   parents: string[]
@@ -37,8 +37,11 @@ export function layout(commits: readonly LogCommit[]): GraphRow[] {
   const lanes: Lane[] = []
   let nextColor = 0
   const rows: GraphRow[] = []
+  // Without --topo-order, clock skew can list a parent before its child: no lane waits for it then.
+  const placed = new Set<string>()
 
   for (const commit of commits) {
+    placed.add(commit.sha)
     const above = lanes.slice()
     const waiting = lanes.flatMap((lane, i) => (lane?.sha === commit.sha ? [i] : []))
     const col = waiting[0] ?? firstFree(lanes, [])
@@ -49,7 +52,7 @@ export function layout(commits: readonly LogCommit[]): GraphRow[] {
     for (const i of joined) {
       lanes[i] = null
     }
-    const [first, ...others] = commit.parents
+    const [first, ...others] = commit.parents.filter(parent => !placed.has(parent))
     lanes[col] = first === undefined ? null : { sha: first, color }
 
     const opened: number[] = []

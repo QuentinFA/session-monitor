@@ -102,21 +102,27 @@ async function loadLog($: $, root: string, scope: string, limit: number): Promis
   const range = scope === 'current' ? ['HEAD'] : ['--branches', '--remotes', '--tags', 'HEAD']
   const format = ['%H', '%P', '%D', '%an', '%at', '%s'].join('%x1f') + '%x1e'
   const [log, status] = await Promise.all([
+    // No --topo-order: it walks every commit the refs reach before printing one, which a large
+    // repository with many remote branches does not finish in time; the layout copes without it.
     $.process
-      .run(['git', 'log', '--topo-order', '--decorate=full', `-n${limit}`, `--format=${format}`, ...range, '--'], {
+      .run(['git', 'log', '--decorate=full', `-n${limit}`, `--format=${format}`, ...range, '--'], {
         cwd: root,
-        timeoutMs: 10000,
+        timeoutMs: 20000,
       })
-      .catch(() => undefined),
+      .catch((error: unknown) => (error instanceof Error ? error.message : String(error))),
     $.process
       .run(['git', 'status', '--porcelain=v1', '-b'], { cwd: root, timeoutMs: 10000 })
       .catch(() => undefined),
   ])
   const head = parseStatus(status?.exitCode === 0 ? status.stdout : '')
-  const result: Log =
-    log?.exitCode === 0
-      ? { rows: layout(parseLog(log.stdout)), head, at: now }
-      : { rows: [], head, at: now, error: log === undefined ? 'git could not be run here' : 'no commits yet' }
+  if (typeof log === 'string' || log.exitCode !== 0) {
+    // Not kept: the next drawing asks git again.
+    const said = typeof log === 'string' ? log : log.stderr.trim().split('\n')[0] || `exit ${log.exitCode}`
+    const error = /does not have any commits|bad default revision 'HEAD'/.test(said) ? 'No commits yet.' : `git log failed: ${said}`
+
+    return { rows: [], head, at: now, error }
+  }
+  const result: Log = { rows: layout(parseLog(log.stdout)), head, at: now }
   logs.set(key, result)
 
   return result
@@ -383,17 +389,17 @@ async function drawGit($: $, e: RenderInput<'Pane'>) {
         )}
         <Text> </Text>
         <Button
-          key="scope:all"
-          label="All branches"
-          variant={scope === 'all' ? 'primary' : undefined}
-          onPress={() => update($, gitScope, () => 'all')}
-        />
-        <Text> </Text>
-        <Button
           key="scope:current"
           label="Current branch"
           variant={scope === 'current' ? 'primary' : undefined}
           onPress={() => update($, gitScope, () => 'current')}
+        />
+        <Text> </Text>
+        <Button
+          key="scope:all"
+          label="All branches"
+          variant={scope === 'all' ? 'primary' : undefined}
+          onPress={() => update($, gitScope, () => 'all')}
         />
         <Text> </Text>
         <Button key="refresh" label="↻" onPress={reload} />
@@ -406,7 +412,7 @@ async function drawGit($: $, e: RenderInput<'Pane'>) {
         {head.upstream && !head.ahead && !head.behind ? ' in sync' : ''}
         {head.uncommitted ? ` · ${head.uncommitted} uncommitted` : ' · clean'}
       </Text>
-      {log.error && <Text dimColor>{log.error}</Text>}
+      {log.error && <Text color="red">{log.error}</Text>}
       {log.rows.map(row => {
         const c = row.commit
         const refs = parseRefs(c.refs)
@@ -433,11 +439,15 @@ async function drawGit($: $, e: RenderInput<'Pane'>) {
                 onPress={() => update($, gitOpen, now => (now === `${root}|${c.sha}` ? '' : `${root}|${c.sha}`))}
               />
               <Text> </Text>
-              {refs.map(ref => (
-                <Text key={`ref:${c.sha}:${ref.kind}:${ref.name}`}>
-                  {label(ref)}{' '}
-                </Text>
-              ))}
+              {refs.length > 0 && (
+                <Box flexShrink={0}>
+                  {refs.map(ref => (
+                    <Text key={`ref:${c.sha}:${ref.kind}:${ref.name}`} wrap="truncate-end">
+                      {label(ref)}{' '}
+                    </Text>
+                  ))}
+                </Box>
+              )}
               {isMade && <Text color="claude">✦ </Text>}
               <Text bold={isMade} wrap="truncate-end">
                 {c.subject}

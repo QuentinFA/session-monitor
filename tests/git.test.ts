@@ -55,6 +55,10 @@ describe('the graph', () => {
     expect(rows).toEqual(['●', '│ ●', '●─┼─╮', '●─┤ │'])
   })
 
+  test('opens no lane for a parent listed before its child', async () => {
+    expect(drawn([commit('a'), commit('b', ['a']), commit('c', ['b'])])).toEqual(['●', '●', '●'])
+  })
+
   test('names refs short and leaves a remote HEAD out', async () => {
     expect(
       parseRefs('HEAD -> refs/heads/main, refs/remotes/origin/main, refs/remotes/origin/HEAD, tag: refs/tags/v1'),
@@ -66,7 +70,7 @@ describe('the graph', () => {
   })
 })
 
-type Repo = { root: string; log: string; status?: string; show?: string }
+type Repo = { root: string; log: string; status?: string; show?: string; logError?: string }
 
 const record = (c: LogCommit) => [c.sha, c.parents.join(' '), c.refs, c.author, String(c.time), c.subject].join('\x1f')
 
@@ -79,13 +83,13 @@ function host(on: On, repos: Repo[], cwd = '/work/app') {
     const dir = e.init?.cwd ?? cwd
     ran.push([dir, ...e.argv])
     const repo = repos.find(r => dir === r.root || dir.startsWith(`${r.root}/`))
-    const out = (exitCode: number, stdout: string) => ({
-      value: { exitCode, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false },
+    const out = (exitCode: number, stdout: string, stderr = '') => ({
+      value: { exitCode, stdout, stderr, isStdoutTruncated: false, isStderrTruncated: false },
     })
     const [, sub] = e.argv
     if (!repo) return out(128, '')
     if (sub === 'rev-parse') return out(0, `${repo.root}\n`)
-    if (sub === 'log') return out(0, repo.log)
+    if (sub === 'log') return repo.logError ? out(128, '', repo.logError) : out(0, repo.log)
     if (sub === 'status') return out(0, repo.status ?? '## main...origin/main\n')
     if (sub === 'show') return out(0, repo.show ?? '')
 
@@ -164,6 +168,21 @@ describe('the Git tab', () => {
 
     expect(logs[0]).toContain('--branches')
     expect(logs.at(-1)).not.toContain('--branches')
+  })
+
+  test("says why git could not read the history, rather than drawing nothing", async ($, on) => {
+    host(on, [{ root: '/work/app', log: '', logError: 'fatal: bad object refs/remotes/origin/gone\n' }])
+    const ui = await mount($)
+
+    expect(await ui.find({ text: /^git log failed: fatal: bad object refs\/remotes\/origin\/gone$/ })).toBeDefined()
+  })
+
+  test('puts Current branch before All branches', async ($, on) => {
+    host(on, [{ root: '/work/app', log: LOG }])
+    const ui = await mount($)
+    const keys = (await ui.findAll({ type: 'Button' })).map(b => b.key).filter(k => k?.startsWith('scope:'))
+
+    expect(keys).toEqual(['scope:current', 'scope:all'])
   })
 
   test('offers a directory granted with /add-dir', async ($, on) => {
