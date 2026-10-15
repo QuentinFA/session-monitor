@@ -4,6 +4,7 @@ import type { EngineInterface, Register, RenderInput } from 'claude-code'
 import { isTabId, MONITOR, MONITOR_TITLE, TAB_IDS } from '../src/lib/pane'
 
 import type { TabId } from '../src/lib/pane'
+import { registerGit } from '../src/git'
 import { registerOutputs } from '../src/outputs'
 
 type $ = EngineInterface
@@ -11,7 +12,7 @@ type $ = EngineInterface
 const activeTab = atom({ plugin: 'session-monitor', key: 'tab' } as const, 'outputs')
 const homeDir = atom({ plugin: 'session-monitor', key: 'home' } as const, '')
 
-const LABELS: Record<TabId, string> = { outputs: 'Outputs' }
+const LABELS: Record<TabId, string> = { outputs: 'Outputs', git: 'Git' }
 
 /** The tab row, then the body the active part's render hook answers further down the chain. */
 async function drawMonitor($: $, e: RenderInput<'Pane'>, body: Promise<unknown>) {
@@ -73,4 +74,5 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'Pane', requestId: MONITOR }, ($, e, next) => drawMonitor($, e, next(e)))
 
   registerOutputs(on, options)
+  registerGit(on, options)
 }

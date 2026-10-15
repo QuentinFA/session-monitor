@@ -19,7 +19,7 @@ One scope per commit: the unit the change is about.
 
 | Scope | Covers |
 | --- | --- |
-| `<part>` | one part: `src/<part>.tsx`, its tests and its state — `outputs`, `state`, `notes`, `analysis` |
+| `<part>` | one part: `src/<part>.tsx`, its tests and its state — `outputs`, `git`, `notes`, `analysis` |
 | `lib` | code the parts share, under `src/lib/` |
 | `repo` | what no part owns: `hooks/register.tsx`, `README.md`, `CLAUDE.md`, `install.sh`, `.claude-plugin/`, `docs/` |
 

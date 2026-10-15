@@ -85,6 +85,16 @@ declare module 'claude-code' {
       expanded: string[]
       /** The Outputs tab's Reset was pressed once and awaits its confirmation. */
       confirmReset: boolean
+      /** The Git tab's repository, by its root; empty for the session's own. */
+      gitRepo: string
+      /** The Git tab's branches: `all`, or `current` for HEAD's history alone. */
+      gitScope: string
+      /** The commit the Git tab shows open, as `<root>|<sha>`; empty for none. */
+      gitOpen: string
+      /** Directories granted during the session (`/add-dir`): the Git tab offers their repositories. */
+      gitDirs: string[]
+      /** How many commits the Git tab reads. */
+      gitLimit: number
     }
   }
 }

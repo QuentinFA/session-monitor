@@ -9,6 +9,7 @@ pane has the keyboard. `/session-monitor <tab>` opens it on that tab.
 | Part | Tab | Status |
 | --- | --- | --- |
 | **outputs** | everything the session used and produced, by directory and across repos | done |
+| **git** | the history of the session's repositories as a commit graph, to look at, not act on | done |
 | **notes** | the work the model defers, made visible — set aside: it must show what the model already records, not add a tracker | rethinking |
 | **analysis** | what went wrong and what you corrected, kept for `reflect` | planned |
 
@@ -40,6 +41,21 @@ summary line until opened:
 
 **Expand all / Collapse all** opens every fold. **Copy all** puts the whole record on the clipboard
 as markdown. **Reset** clears it, after a confirmation.
+
+## git
+
+`/session-monitor git` opens the monitor on this tab: the history of a repository as a graph, the
+way a desktop git client draws it, read-only.
+
+- Each branch keeps its own lane, in its own color; the checked-out commit is `◉`, and a commit
+  this session made is marked `✦`. Branches, remote branches and tags are labelled on their commit.
+- **All branches** or **Current branch**; a line above the graph gives the branch, its upstream,
+  ahead/behind, and the uncommitted files.
+- Press a commit's hash to open it: author, date, the whole message, and its files with `+/−` lines.
+- The picker offers the working directory's repository, every one Outputs recorded, and the
+  repository of any directory granted with `/add-dir`.
+- Git is read again after each command the session runs, on **↻**, and when what is shown is more
+  than 30 seconds old. The first 50 commits are shown; **Show 50 more** reads further.
 
 ## Install
 

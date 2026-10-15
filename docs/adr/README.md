@@ -132,3 +132,6 @@ Researched when these rules were set:
 - Considered and left out at this size: an archive directory for superseded
   ADRs (breaks links; the Status line does the job), a generated index, and a
   separate current-state architecture document (duplicates `CLAUDE.md` and drifts).
+| [0022](0022-git-history-is-drawn-in-straight-lanes-read-only.md) | Git history is drawn in straight lanes, and only viewed | accepted |
+| [0023](0023-the-git-tab-offers-the-sessions-repositories.md) | The Git tab offers the session's repositories, granted ones included | accepted |
+| [0024](0024-git-is-read-again-after-a-command-not-on-every-draw.md) | Git is read again after a command, not on every draw | accepted |
